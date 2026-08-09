@@ -1,3 +1,6 @@
+# ============================================
+# main.py - Complete Crash/Boom Trading Bot (Render Ready)
+# ============================================
 import asyncio
 import json
 import os
@@ -212,8 +215,8 @@ class CrashBoomTrader:
         self.last_data = {}
         self.last_update = {}
         self.models_loaded = False
-        self.recent_trades = []  # Store recent trades for display
-        self.trade_log = []  # Full trade history
+        self.recent_trades = []
+        self.trade_log = []
         
         # Validate credentials and get demo account
         is_valid, account_id, balance, currency = validate_credentials()
@@ -790,11 +793,27 @@ class CrashBoomTrader:
             await self.websocket.close()
         print(Fore.CYAN + "\n🛑 Trading loop stopped")
 
+# --- GLOBAL INITIALIZATION (runs when Gunicorn starts) ---
+print(Fore.CYAN + "="*70)
+print(Fore.CYAN + "🔴 DERIV CRASH/BOOM TRADER - PRODUCTION (DEMO ACCOUNT)")
+print(Fore.CYAN + "="*70)
+
+# Initialize trader globally
+try:
+    trader = CrashBoomTrader()
+    print(Fore.GREEN + f"✅ Trader initialized successfully!")
+    print(Fore.GREEN + f"📡 Account ID: {trader.account_id}")
+    print(Fore.GREEN + f"💰 Balance: {trader.currency} {trader.balance:.2f}")
+    print(Fore.GREEN + f"📊 Models loaded: {trader.models_loaded}")
+except Exception as e:
+    print(Fore.RED + f"❌ Failed to initialize trader: {e}")
+    trader = None
+
 # --- Flask Routes for Render ---
 @app.route('/')
 def home():
-    if 'trader' not in globals():
-        return jsonify({"error": "Trader not initialized"}), 500
+    if trader is None:
+        return jsonify({"error": "Trader not initialized - check logs"}), 500
     
     status = {
         "status": "running",
@@ -815,8 +834,8 @@ def home():
 
 @app.route('/status')
 def status():
-    if 'trader' not in globals():
-        return jsonify({"error": "Trader not initialized"}), 500
+    if trader is None:
+        return jsonify({"error": "Trader not initialized - check logs"}), 500
     
     active_positions = {}
     for symbol, pos in trader.active_positions.items():
@@ -857,37 +876,33 @@ def toggle_trading():
 
 @app.route('/stop')
 def stop_bot():
-    if 'trader' in globals():
+    if trader:
         trader.running = False
         return jsonify({"message": "Bot stopping..."})
     return jsonify({"error": "Trader not found"}), 404
 
+# --- Background Thread for Trading ---
 def run_trading_bot():
+    """Run the trading bot in a background thread"""
     global trader
-    try:
-        trader = CrashBoomTrader()
-        asyncio.run(trader.run_trading_loop())
-    except Exception as e:
-        print(Fore.RED + f"❌ Fatal error in trading bot: {e}")
-        raise
+    if trader:
+        try:
+            asyncio.run(trader.run_trading_loop())
+        except Exception as e:
+            print(Fore.RED + f"❌ Error in trading loop: {e}")
+    else:
+        print(Fore.RED + "❌ Cannot run trading loop - trader not initialized")
 
+# --- Main Entry Point (for local testing) ---
 if __name__ == "__main__":
-    if not DERIV_APP_ID:
-        print(Fore.RED + "❌ ERROR: DERIV_APP_ID is REQUIRED!")
-        exit(1)
-    
-    if not DERIV_TOKEN:
-        print(Fore.RED + "❌ ERROR: DERIV_TOKEN is REQUIRED!")
-        exit(1)
-    
-    try:
-        trader = CrashBoomTrader()
-        trading_thread = threading.Thread(target=run_trading_bot, daemon=True)
-        trading_thread.start()
-    except Exception as e:
-        print(Fore.RED + f"❌ Failed to initialize trading bot: {e}")
-        exit(1)
-    
+    # Get port from environment variable
     port = int(os.environ.get('PORT', 10000))
     print(Fore.GREEN + f"\n🚀 Starting Flask server on port {port}")
+    
+    # Start trading thread if trader exists
+    if trader:
+        trading_thread = threading.Thread(target=run_trading_bot, daemon=True)
+        trading_thread.start()
+        print(Fore.GREEN + "✅ Trading thread started")
+    
     app.run(host='0.0.0.0', port=port, debug=False)
