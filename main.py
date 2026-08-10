@@ -165,19 +165,22 @@ def validate_credentials():
     print(Fore.CYAN + "="*60)
     
     try:
-        # Get demo account
         account_id, currency = get_demo_account_id()
         if not account_id:
             raise Exception("No demo account found!")
         
-        # Get OTP URL
         otp_ws_url = get_otp_url(account_id)
         if not otp_ws_url:
             raise Exception("Failed to get OTP URL!")
         
-        # Get balance
         print(Fore.YELLOW + "📡 Fetching balance via OTP...")
-        balance, currency = asyncio.run(get_balance_via_otp(otp_ws_url))
+        
+        # ✅ FIX: Handle running event loop properly
+        try:
+            loop = asyncio.get_running_loop()
+            balance, currency = loop.run_until_complete(get_balance_via_otp(otp_ws_url))
+        except RuntimeError:
+            balance, currency = asyncio.run(get_balance_via_otp(otp_ws_url))
         
         if balance is not None:
             print(Fore.GREEN + "="*60)
