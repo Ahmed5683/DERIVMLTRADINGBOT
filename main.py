@@ -821,7 +821,7 @@ except Exception as e:
     print(Fore.RED + f"❌ Failed to initialize trader: {e}")
     trader = None
 
-# --- GLOBAL TRADING LOOP STARTER (FIXED) ---
+# --- GLOBAL TRADING LOOP STARTER (FIXED - Persistent Event Loop) ---
 def start_trading_loop():
     """Start the trading loop in a background thread with a persistent event loop"""
     global trader
