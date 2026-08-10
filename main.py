@@ -823,18 +823,19 @@ except Exception as e:
 
 # --- GLOBAL TRADING LOOP STARTER (FIXED) ---
 def start_trading_loop():
-    """Start the trading loop in a background thread with proper event loop"""
+    """Start the trading loop in a background thread with a persistent event loop"""
     global trader
     if not trader:
         print(Fore.RED + "❌ Trader not initialized, cannot start trading loop")
         return
-    
+
     print(Fore.GREEN + "🔄 Starting trading loop in background...")
-    
+
     # Create a new event loop for this thread
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    
+
+    # Run the trading loop (this will block the thread)
     try:
         loop.run_until_complete(trader.run_trading_loop())
     except Exception as e:
@@ -851,7 +852,7 @@ if trader:
         if t.name == "TradingLoop":
             thread_already_running = True
             break
-    
+
     if not thread_already_running:
         trading_thread = threading.Thread(target=start_trading_loop, daemon=True, name="TradingLoop")
         trading_thread.start()
