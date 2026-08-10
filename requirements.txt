@@ -7,7 +7,7 @@ numpy==2.3.2
 scikit-learn==1.7.1
 joblib==1.3.2
 talipp==2.7.0
-gunicorn==21.2.0
+uvicorn==0.23.2
 python-dotenv==1.0.0
 requests==2.31.0
 colorama==0.4.6
