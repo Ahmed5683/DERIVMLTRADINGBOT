@@ -694,7 +694,6 @@ class CrashBoomTrader:
         print(color + f"   Win Rate: {win_rate:.1f}%")
         print(color + f"   Balance: ${self.balance:.2f}")
     
-    # ✅ FIXED: Use asyncio.create_task instead of threading
     def execute_trade(self, signal):
         """Execute a new trade as a background task"""
         print(Fore.CYAN + f"\n🟢 TRADE SIGNAL DETECTED - {signal['symbol']}")
@@ -705,10 +704,8 @@ class CrashBoomTrader:
         print(Fore.CYAN + f"   TP: {signal['tp_price']:.4f} (${BASE_STAKE * TP_MULTIPLIER:.2f})")
         print(Fore.CYAN + f"   SL: {signal['sl_price']:.4f} (-${BASE_STAKE * SL_MULTIPLIER:.2f})")
         
-        # Determine contract type
         contract_type = "MULTUP" if signal['signal'] == "BUY" else "MULTDOWN"
         
-        # ✅ FIX: Use asyncio.create_task to run in the background
         async def place_and_record():
             result = await self.place_trade(signal['symbol'], contract_type)
             if result and result.get('success'):
@@ -729,7 +726,6 @@ class CrashBoomTrader:
                 error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
                 print(Fore.RED + f"\n❌ Trade failed for {signal['symbol']}: {error_msg}")
         
-        # Create a background task
         asyncio.create_task(place_and_record())
     
     async def run_trading_loop(self):
@@ -748,15 +744,13 @@ class CrashBoomTrader:
                 current_time = datetime.now().strftime('%H:%M:%S')
                 self.last_cycle_time = datetime.now().timestamp()
                 
-                # Heartbeat every 30 seconds
                 if cycle_count > 1:
                     heartbeat_count += 1
-                    if heartbeat_count % 2 == 0:  # Every ~60 seconds
+                    if heartbeat_count % 2 == 0:
                         print(Fore.CYAN + f"💓 Heartbeat - Bot is alive and scanning...")
                 
                 print(Fore.CYAN + f"\n⏰ Cycle #{cycle_count} - {current_time}")
                 
-                # Fetch and analyze all symbols
                 for symbol_name, config in SYMBOL_CONFIGS.items():
                     df = await self.fetch_1min_candles(config['symbol'], count=200)
                     
@@ -768,7 +762,6 @@ class CrashBoomTrader:
                     self.last_data[symbol_name] = df
                     self.last_update[symbol_name] = datetime.now()
                     
-                    # Show prediction confidence
                     pred = self.predict_signal(symbol_name, df)
                     if pred and ENABLE_LOGGING:
                         conf_str = f"Conf: {pred['confidence']:.1%}" if pred['confidence'] else "N/A"
@@ -777,17 +770,14 @@ class CrashBoomTrader:
                     elif ENABLE_LOGGING:
                         print(Fore.WHITE + f"  📊 {symbol_name}: close: {df['close'].iloc[-1]:.4f}")
                     
-                    # Manage existing position
                     self.manage_position(symbol_name, df)
                     
-                    # Check for new signal (only if not in position)
                     if symbol_name not in self.active_positions:
                         signal = self.check_for_signal(symbol_name, df)
                         if signal:
                             self.execute_trade(signal)
-                            await asyncio.sleep(0)  # Let the event loop breathe
+                            await asyncio.sleep(0)
                 
-                # Print status summary
                 win_rate = self.win_count/self.trade_count*100 if self.trade_count > 0 else 0
                 print(Fore.CYAN + f"\n📊 STATUS SUMMARY:")
                 print(Fore.CYAN + f"   Trades: {self.trade_count} (Wins: {Fore.GREEN}{self.win_count}{Fore.CYAN} | Losses: {Fore.RED}{self.loss_count}{Fore.CYAN})")
@@ -796,7 +786,6 @@ class CrashBoomTrader:
                 print(Fore.CYAN + f"   Balance: ${self.balance:.2f}")
                 print(Fore.CYAN + f"   Active Positions: {len(self.active_positions)}")
                 
-                # Refresh balance every 5 cycles
                 if cycle_count % 5 == 0:
                     try:
                         otp_url = get_otp_url(self.account_id)
@@ -808,7 +797,6 @@ class CrashBoomTrader:
                     except Exception as e:
                         print(Fore.YELLOW + f"⚠️ Balance refresh failed: {e}")
                 
-                # Wait 60 seconds before next cycle with heartbeat messages
                 print(Fore.YELLOW + f"⏳ Waiting 60 seconds for next cycle...")
                 for i in range(60):
                     if not self.running:
@@ -826,12 +814,11 @@ class CrashBoomTrader:
             await self.websocket.close()
         print(Fore.CYAN + "\n🛑 Trading loop stopped")
 
-# --- GLOBAL INITIALIZATION (runs when Gunicorn starts) ---
+# --- GLOBAL INITIALIZATION ---
 print(Fore.CYAN + "="*70)
 print(Fore.CYAN + "🔴 DERIV CRASH/BOOM TRADER - PRODUCTION (DEMO ACCOUNT)")
 print(Fore.CYAN + "="*70)
 
-# Initialize trader globally
 try:
     trader = CrashBoomTrader()
     print(Fore.GREEN + f"✅ Trader initialized successfully!")
@@ -842,20 +829,14 @@ except Exception as e:
     print(Fore.RED + f"❌ Failed to initialize trader: {e}")
     trader = None
 
-# --- GLOBAL TRADING LOOP STARTER ---
 def start_trading_loop():
-    """Start the trading loop in a background thread"""
     global trader
     if not trader:
         print(Fore.RED + "❌ Trader not initialized, cannot start trading loop")
         return
-    
     print(Fore.GREEN + "🔄 Starting trading loop in background...")
-    
-    # Create a new event loop for this thread
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    
     try:
         loop.run_until_complete(trader.run_trading_loop())
     except Exception as e:
@@ -864,15 +845,12 @@ def start_trading_loop():
         loop.close()
         print(Fore.YELLOW + "🔄 Trading loop thread ended")
 
-# --- START THE TRADING LOOP WHEN THE APP LOADS ---
 if trader:
-    # Check if thread is already running
     thread_already_running = False
     for t in threading.enumerate():
         if t.name == "TradingLoop":
             thread_already_running = True
             break
-    
     if not thread_already_running:
         trading_thread = threading.Thread(target=start_trading_loop, daemon=True, name="TradingLoop")
         trading_thread.start()
@@ -882,7 +860,7 @@ if trader:
 else:
     print(Fore.RED + "❌ Trader not initialized, cannot start trading loop")
 
-# --- Flask Routes for Render ---
+# --- Flask Routes ---
 @app.route('/')
 def home():
     if trader is None:
@@ -907,7 +885,7 @@ def home():
 
 @app.route('/dashboard')
 def dashboard():
-    """Real-time dashboard HTML page with price and update time"""
+    """Simple Bootstrap dashboard - NO custom CSS"""
     if trader is None:
         return "<h1>❌ Trader not initialized</h1>", 500
     
@@ -916,9 +894,13 @@ def dashboard():
         def get_symbol_html(symbol_name, df):
             if df is None or df.empty:
                 return f'''
-                <div class="symbol-card">
-                    <div class="symbol">{symbol_name}</div>
-                    <div style="color:#667788;">No data</div>
+                <div class="col-md-3 col-sm-6 mb-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">{symbol_name}</h5>
+                            <p class="text-muted">No data</p>
+                        </div>
+                    </div>
                 </div>
                 '''
             try:
@@ -931,27 +913,35 @@ def dashboard():
                     conf = f"{pred['confidence']:.1%}" if pred['confidence'] else "N/A"
                     dpo = f"{pred['dpo']:.4f}" if pred['dpo'] is not None else "N/A"
                     signal = "BUY" if pred.get('signal') == "BUY" else "SELL" if pred.get('signal') == "SELL" else "N/A"
-                    signal_class = "signal-buy" if signal == "BUY" else "signal-sell" if signal == "SELL" else "signal-none"
+                    badge_class = "success" if signal == "BUY" else "danger" if signal == "SELL" else "secondary"
                 else:
-                    conf, dpo, signal, signal_class = "N/A", "N/A", "N/A", "signal-none"
+                    conf, dpo, signal, badge_class = "N/A", "N/A", "N/A", "secondary"
                 
                 return f'''
-                <div class="symbol-card">
-                    <div class="symbol">{symbol_name}</div>
-                    <div class="price">${price:.4f}</div>
-                    <div class="update-time">🕐 {update_time}</div>
-                    <div class="conf">Conf: {conf}</div>
-                    <div class="dpo">DPO: {dpo}</div>
-                    <div class="signal {signal_class}">{signal}</div>
-                    <div style="font-size:0.6em;color:#445566;">Multiplier: {SYMBOL_CONFIGS[symbol_name]['multiplier']}x</div>
+                <div class="col-md-3 col-sm-6 mb-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">{symbol_name}</h5>
+                            <h6 class="card-subtitle mb-2 text-muted">${price:.4f}</h6>
+                            <p class="card-text small">🕐 {update_time}</p>
+                            <p class="card-text small">Conf: {conf}</p>
+                            <p class="card-text small">DPO: {dpo}</p>
+                            <span class="badge bg-{badge_class}">{signal}</span>
+                            <p class="card-text small mt-2">Multiplier: {SYMBOL_CONFIGS[symbol_name]['multiplier']}x</p>
+                        </div>
+                    </div>
                 </div>
                 '''
             except Exception as e:
                 print(f"⚠️ Error building symbol card for {symbol_name}: {e}")
                 return f'''
-                <div class="symbol-card">
-                    <div class="symbol">{symbol_name}</div>
-                    <div style="color:#ff4444;">Error</div>
+                <div class="col-md-3 col-sm-6 mb-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">{symbol_name}</h5>
+                            <p class="text-danger">Error</p>
+                        </div>
+                    </div>
                 </div>
                 '''
 
@@ -979,17 +969,19 @@ def dashboard():
         trade_log_html = ""
         if trader and trader.recent_trades:
             for trade in trader.recent_trades[:10]:
-                profit_class = "win" if trade.get('profit', 0) > 0 else "loss"
+                profit_class = "success" if trade.get('profit', 0) > 0 else "danger"
                 trade_log_html += f'''
-                <div class="trade-item">
-                    <span class="{profit_class}">{'✅' if trade.get('profit', 0) > 0 else '❌'}</span>
-                    {trade.get('symbol', 'N/A')} | {trade.get('reason', 'N/A')} | 
-                    <span class="{profit_class}">${trade.get('profit', 0):.2f}</span>
-                    | Conf: {trade.get('confidence', 0):.1%} | {trade.get('time', 'N/A')}
-                </div>
+                <tr>
+                    <td>{'✅' if trade.get('profit', 0) > 0 else '❌'}</td>
+                    <td>{trade.get('symbol', 'N/A')}</td>
+                    <td>{trade.get('reason', 'N/A')}</td>
+                    <td class="text-{profit_class}">${trade.get('profit', 0):.2f}</td>
+                    <td>{trade.get('confidence', 0):.1%}</td>
+                    <td>{trade.get('time', 'N/A')}</td>
+                </tr>
                 '''
         else:
-            trade_log_html = '<div style="color:#445566;">No trades yet</div>'
+            trade_log_html = '<tr><td colspan="6" class="text-center text-muted">No trades yet</td></tr>'
 
         # --- Uptime ---
         uptime = "N/A"
@@ -1013,155 +1005,134 @@ def dashboard():
 
         bot_status = "🟢 ONLINE" if trader and trader.running else "🔴 OFFLINE"
 
-        # --- HTML Template with clean CSS (no newlines in property names) ---
-        html = '''<!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Deriv Trading Bot Dashboard</title>
-            <style>
-                * { margin:0; padding:0; box-sizing:border-box; }
-                body { font-family:'Courier New',monospace; background:#0a0e17; color:#00ff88; padding:20px; min-height:100vh; }
-                .container { max-width:1200px; margin:0 auto; }
-                h1 { color:#00ff88; text-align:center; font-size:2em; margin-bottom:20px; text-shadow:0 0 20px rgba(0,255,136,0.3); border-bottom:2px solid #00ff88; padding-bottom:10px; }
-                .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:20px; margin:20px 0; }
-                .card { background:#111927; border:1px solid #1a2d3d; border-radius:12px; padding:20px; box-shadow:0 4px 20px rgba(0,0,0,0.5); transition:all 0.3s ease; }
-                .card:hover { border-color:#00ff88; box-shadow:0 0 30px rgba(0,255,136,0.1); }
-                .card-title { color:#8899aa; font-size:0.8em; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
-                .card-value { color:#00ff88; font-size:1.8em; font-weight:bold; }
-                .card-value.warning { color:#ffaa00; }
-                .card-value.danger { color:#ff4444; }
-                .card-value.success { color:#00ff88; }
-                .card-sub { color:#667788; font-size:0.8em; margin-top:5px; }
-                .symbol-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; margin:10px 0; }
-                .symbol-card { background:#0d1520; border:1px solid #1a2d3d; border-radius:8px; padding:12px; text-align:center; }
-                .symbol-card .symbol { color:#00ff88; font-weight:bold; font-size:1.1em; }
-                .symbol-card .price { color:#ffffff; font-size:1.0em; margin:4px 0; }
-                .symbol-card .update-time { color:#667788; font-size:0.7em; margin:2px 0; }
-                .symbol-card .conf { color:#ffaa00; font-size:0.9em; margin:4px 0; }
-                .symbol-card .dpo { color:#8899aa; font-size:0.8em; }
-                .symbol-card .signal { font-weight:bold; font-size:1.2em; }
-                .signal-buy { color:#00ff88; }
-                .signal-sell { color:#ff4444; }
-                .signal-none { color:#667788; }
-                .status-badge { display:inline-block; padding:4px 12px; border-radius:20px; font-size:0.8em; font-weight:bold; }
-                .status-running { background:#00ff8822; color:#00ff88; border:1px solid #00ff88; }
-                .status-stopped { background:#ff444422; color:#ff4444; border:1px solid #ff4444; }
-                .footer { text-align:center; color:#445566; font-size:0.8em; margin-top:30px; padding-top:20px; border-top:1px solid #1a2d3d; }
-                .refresh-btn { background:#00ff8822; color:#00ff88; border:1px solid #00ff88; padding:8px 20px; border-radius:6px; cursor:pointer; font-family:'Courier New',monospace; font-size:0.9em; margin:10px auto; display:block; transition:all 0.3s; }
-                .refresh-btn:hover { background:#00ff8844; box-shadow:0 0 20px rgba(0,255,136,0.2); }
-                .trade-log { max-height:300px; overflow-y:auto; font-size:0.8em; color:#8899aa; }
-                .trade-log .trade-item { padding:4px 0; border-bottom:1px solid #0d1520; }
-                .trade-log .win { color:#00ff88; }
-                .trade-log .loss { color:#ff4444; }
-                .live-indicator { display:inline-block; width:10px; height:10px; border-radius:50%; background:#00ff88; animation:pulse 2s infinite; margin-right:8px; }
-                @keyframes pulse { 0% { opacity:1; } 50% { opacity:0.3; } 100% { opacity:1; } }
-                .last-update { color:#667788; font-size:0.8em; text-align:center; margin:10px 0; }
-                .balance-change { font-size:0.6em; color:#667788; margin-left:8px; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>🔴 DERIV TRADING BOT</h1>
-                <div style="text-align:center;margin-bottom:10px;">
-                    <span class="status-badge status-running">
-                        <span class="live-indicator"></span> LIVE
-                    </span>
-                    <span style="color:#667788;margin-left:15px;">|</span>
-                    <span style="color:#667788;">Account: {account_id}</span>
-                    <span style="color:#667788;margin-left:15px;">|</span>
-                    <span style="color:#667788;">Models: {models_loaded}</span>
-                </div>
-                <div class="last-update" id="lastUpdate">⏰ Last Update: Loading...</div>
-                <button class="refresh-btn" onclick="location.reload()">🔄 Refresh Data</button>
-                
-                <div class="grid">
-                    <div class="card">
-                        <div class="card-title">💰 Balance</div>
-                        <div class="card-value">{balance}</div>
-                        <div class="card-sub">Currency: {currency}</div>
+        # --- Bootstrap HTML Template ---
+        html = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deriv Trading Bot Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+</head>
+<body class="bg-dark text-light">
+    <div class="container py-4">
+        <h1 class="text-center text-success mb-4">🔴 DERIV TRADING BOT</h1>
+        
+        <div class="text-center mb-3">
+            <span class="badge bg-success p-2">LIVE</span>
+            <span class="text-muted mx-2">|</span>
+            <span class="text-muted">Account: {account_id}</span>
+            <span class="text-muted mx-2">|</span>
+            <span class="text-muted">Models: {models_loaded}</span>
+        </div>
+        
+        <p class="text-center text-muted" id="lastUpdate">⏰ Last Update: Loading...</p>
+        
+        <div class="text-center mb-4">
+            <button class="btn btn-outline-success" onclick="location.reload()">🔄 Refresh Data</button>
+        </div>
+        
+        <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <div class="card bg-secondary bg-opacity-25 border-success">
+                    <div class="card-body">
+                        <h6 class="card-subtitle text-muted">💰 Balance</h6>
+                        <h3 class="card-title text-success">{balance}</h3>
+                        <p class="card-text small text-muted">Currency: {currency}</p>
                     </div>
-                    <div class="card">
-                        <div class="card-title">📊 Total Trades</div>
-                        <div class="card-value">{trade_count}</div>
-                        <div class="card-sub">Wins: {win_count} | Losses: {loss_count}</div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">📈 Win Rate</div>
-                        <div class="card-value">{win_rate}</div>
-                        <div class="card-sub">Total P&L: {total_profit}</div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">🎯 Confidence Threshold</div>
-                        <div class="card-value">{confidence_threshold}</div>
-                        <div class="card-sub">Trading: {trading_status}</div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">⚡ Active Positions</div>
-                        <div class="card-value">{active_positions}</div>
-                        <div class="card-sub">{position_details}</div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">🔄 Trading Loop</div>
-                        <div class="card-value" style="font-size:1.2em;">{loop_status}</div>
-                        <div class="card-sub">Last Cycle: {last_cycle}</div>
-                    </div>
-                </div>
-                
-                <h2 style="color:#00ff88;font-size:1.2em;margin:20px 0 10px;">📊 Symbol Analysis</h2>
-                <div class="symbol-grid" id="symbolGrid">
-                    {symbol_data}
-                </div>
-                
-                <h2 style="color:#00ff88;font-size:1.2em;margin:20px 0 10px;">📋 Recent Trades</h2>
-                <div class="card">
-                    <div class="trade-log">
-                        {trade_log}
-                    </div>
-                </div>
-                
-                <div class="footer">
-                    🔴 Bot Status: {bot_status} | Uptime: {uptime} | 
-                    <span id="serverTime">Server Time: Loading...</span>
                 </div>
             </div>
-            
-            <script>
-                function updateTime() {
-                    const now = new Date();
-                    document.getElementById('serverTime').textContent = 'Server Time: ' + now.toLocaleString();
-                }
-                setInterval(updateTime, 1000);
-                updateTime();
-                setTimeout(function() { location.reload(); }, 60000);
-                document.getElementById('lastUpdate').textContent = '⏰ Last Update: ' + new Date().toLocaleString();
-            </script>
-        </body>
-        </html>'''
+            <div class="col-md-4">
+                <div class="card bg-secondary bg-opacity-25 border-primary">
+                    <div class="card-body">
+                        <h6 class="card-subtitle text-muted">📊 Total Trades</h6>
+                        <h3 class="card-title text-primary">{trade_count}</h3>
+                        <p class="card-text small text-muted">Wins: {win_count} | Losses: {loss_count}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-secondary bg-opacity-25 border-warning">
+                    <div class="card-body">
+                        <h6 class="card-subtitle text-muted">📈 Win Rate</h6>
+                        <h3 class="card-title text-warning">{win_rate}</h3>
+                        <p class="card-text small text-muted">Total P&L: {total_profit}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-secondary bg-opacity-25 border-info">
+                    <div class="card-body">
+                        <h6 class="card-subtitle text-muted">🎯 Confidence Threshold</h6>
+                        <h3 class="card-title text-info">{confidence_threshold}</h3>
+                        <p class="card-text small text-muted">Trading: {trading_status}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-secondary bg-opacity-25 border-danger">
+                    <div class="card-body">
+                        <h6 class="card-subtitle text-muted">⚡ Active Positions</h6>
+                        <h3 class="card-title text-danger">{active_positions}</h3>
+                        <p class="card-text small text-muted">{position_details}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-secondary bg-opacity-25 border-light">
+                    <div class="card-body">
+                        <h6 class="card-subtitle text-muted">🔄 Trading Loop</h6>
+                        <h3 class="card-title text-light" style="font-size:1.2em;">{loop_status}</h3>
+                        <p class="card-text small text-muted">Last Cycle: {last_cycle}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
         
-        # Format the HTML with all variables
-        html = html.format(
-            account_id=account_id,
-            balance=balance,
-            currency=currency,
-            trade_count=trade_count,
-            win_count=win_count,
-            loss_count=loss_count,
-            win_rate=win_rate,
-            total_profit=total_profit,
-            active_positions=active_positions,
-            position_details=position_details,
-            models_loaded=models_loaded,
-            trading_status=trading_status,
-            confidence_threshold=confidence_threshold,
-            symbol_data=symbol_data,
-            trade_log=trade_log_html,
-            loop_status=loop_status,
-            last_cycle=last_cycle,
-            uptime=uptime,
-            bot_status=bot_status
-        )
+        <h2 class="text-success h4 mb-3">📊 Symbol Analysis</h2>
+        <div class="row">
+            {symbol_data}
+        </div>
+        
+        <h2 class="text-success h4 mt-4 mb-3">📋 Recent Trades</h2>
+        <div class="table-responsive">
+            <table class="table table-dark table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Status</th>
+                        <th>Symbol</th>
+                        <th>Reason</th>
+                        <th>Profit</th>
+                        <th>Confidence</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {trade_log}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="text-center text-muted small mt-4">
+            🔴 Bot Status: {bot_status} | Uptime: {uptime} | 
+            <span id="serverTime">Server Time: Loading...</span>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function updateTime() {{
+            const now = new Date();
+            document.getElementById('serverTime').textContent = 'Server Time: ' + now.toLocaleString();
+        }}
+        setInterval(updateTime, 1000);
+        updateTime();
+        setTimeout(function() {{ location.reload(); }}, 60000);
+        document.getElementById('lastUpdate').textContent = '⏰ Last Update: ' + new Date().toLocaleString();
+    </script>
+</body>
+</html>'''
         
         return html
         
@@ -1206,7 +1177,6 @@ def status():
 
 @app.route('/toggle_trading')
 def toggle_trading():
-    """Toggle trading on/off"""
     global ENABLE_TRADING
     ENABLE_TRADING = not ENABLE_TRADING
     status = "ENABLED" if ENABLE_TRADING else "DISABLED"
@@ -1220,20 +1190,17 @@ def stop_bot():
         return jsonify({"message": "Bot stopping..."})
     return jsonify({"error": "Trader not found"}), 404
 
-# --- Main Entry Point (for local testing) ---
+# --- Main Entry Point ---
 if __name__ == "__main__":
-    # Get port from environment variable
     port = int(os.environ.get('PORT', 10000))
     print(Fore.GREEN + f"\n🚀 Starting Flask server on port {port}")
     
-    # Start trading thread if trader exists and not already started
     if trader:
         thread_already_running = False
         for t in threading.enumerate():
             if t.name == "TradingLoop":
                 thread_already_running = True
                 break
-        
         if not thread_already_running:
             trading_thread = threading.Thread(target=start_trading_loop, daemon=True, name="TradingLoop")
             trading_thread.start()
