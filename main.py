@@ -821,24 +821,43 @@ except Exception as e:
     print(Fore.RED + f"❌ Failed to initialize trader: {e}")
     trader = None
 
-# --- GLOBAL TRADING LOOP STARTER ---
+# --- GLOBAL TRADING LOOP STARTER (FIXED) ---
 def start_trading_loop():
-    """Start the trading loop in a background thread"""
+    """Start the trading loop in a background thread with proper event loop"""
     global trader
-    if trader:
-        print(Fore.GREEN + "🔄 Starting trading loop in background...")
-        try:
-            asyncio.run(trader.run_trading_loop())
-        except Exception as e:
-            print(Fore.RED + f"❌ Trading loop error: {e}")
-    else:
+    if not trader:
         print(Fore.RED + "❌ Trader not initialized, cannot start trading loop")
+        return
+    
+    print(Fore.GREEN + "🔄 Starting trading loop in background...")
+    
+    # Create a new event loop for this thread
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        loop.run_until_complete(trader.run_trading_loop())
+    except Exception as e:
+        print(Fore.RED + f"❌ Trading loop error: {e}")
+    finally:
+        loop.close()
+        print(Fore.YELLOW + "🔄 Trading loop thread ended")
 
 # --- START THE TRADING LOOP WHEN THE APP LOADS ---
 if trader:
-    trading_thread = threading.Thread(target=start_trading_loop, daemon=True)
-    trading_thread.start()
-    print(Fore.GREEN + "✅ Trading loop started in background thread")
+    # Check if thread is already running
+    thread_already_running = False
+    for t in threading.enumerate():
+        if t.name == "TradingLoop":
+            thread_already_running = True
+            break
+    
+    if not thread_already_running:
+        trading_thread = threading.Thread(target=start_trading_loop, daemon=True, name="TradingLoop")
+        trading_thread.start()
+        print(Fore.GREEN + "✅ Trading loop started in background thread")
+    else:
+        print(Fore.GREEN + "✅ Trading thread already running")
 else:
     print(Fore.RED + "❌ Trader not initialized, cannot start trading loop")
 
@@ -922,7 +941,6 @@ if __name__ == "__main__":
     
     # Start trading thread if trader exists and not already started
     if trader:
-        # Check if thread is already running
         thread_already_running = False
         for t in threading.enumerate():
             if t.name == "TradingLoop":
