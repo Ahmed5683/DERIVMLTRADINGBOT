@@ -694,9 +694,9 @@ class CrashBoomTrader:
         print(color + f"   Win Rate: {win_rate:.1f}%")
         print(color + f"   Balance: ${self.balance:.2f}")
     
-    # ✅ FIXED: Execute trade in a separate thread
+    # ✅ FIXED: Use asyncio.create_task instead of threading
     def execute_trade(self, signal):
-        """Execute a new trade in a separate thread to avoid blocking the main loop"""
+        """Execute a new trade as a background task"""
         print(Fore.CYAN + f"\n🟢 TRADE SIGNAL DETECTED - {signal['symbol']}")
         print(Fore.CYAN + f"   Signal: {signal['signal']}")
         print(Fore.CYAN + f"   Confidence: {signal['confidence']:.2%}")
@@ -708,38 +708,29 @@ class CrashBoomTrader:
         # Determine contract type
         contract_type = "MULTUP" if signal['signal'] == "BUY" else "MULTDOWN"
         
-        # ✅ FIX: Run trade in a separate thread
-        def trade_thread():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                result = loop.run_until_complete(
-                    self.place_trade(signal['symbol'], contract_type)
-                )
-                # Process result in the main thread
-                if result and result.get('success'):
-                    self.active_positions[signal['symbol']] = {
-                        'entry_time': signal['timestamp'],
-                        'entry_price': signal['entry_price'],
-                        'tp_price': signal['tp_price'],
-                        'sl_price': signal['sl_price'],
-                        'confidence': signal['confidence'],
-                        'multiplier': signal['multiplier'],
-                        'contract_id': result['contract_id']
-                    }
-                    print(Fore.GREEN + f"\n✅ TRADE EXECUTED - {signal['symbol']}")
-                    print(Fore.GREEN + f"   Contract ID: {result['contract_id']}")
-                    print(Fore.GREEN + f"   Balance After: ${result['balance_after']:.2f}")
-                    self.balance = result['balance_after']
-                else:
-                    error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
-                    print(Fore.RED + f"\n❌ Trade failed for {signal['symbol']}: {error_msg}")
-            finally:
-                loop.close()
+        # ✅ FIX: Use asyncio.create_task to run in the background
+        async def place_and_record():
+            result = await self.place_trade(signal['symbol'], contract_type)
+            if result and result.get('success'):
+                self.active_positions[signal['symbol']] = {
+                    'entry_time': signal['timestamp'],
+                    'entry_price': signal['entry_price'],
+                    'tp_price': signal['tp_price'],
+                    'sl_price': signal['sl_price'],
+                    'confidence': signal['confidence'],
+                    'multiplier': signal['multiplier'],
+                    'contract_id': result['contract_id']
+                }
+                print(Fore.GREEN + f"\n✅ TRADE EXECUTED - {signal['symbol']}")
+                print(Fore.GREEN + f"   Contract ID: {result['contract_id']}")
+                print(Fore.GREEN + f"   Balance After: ${result['balance_after']:.2f}")
+                self.balance = result['balance_after']
+            else:
+                error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
+                print(Fore.RED + f"\n❌ Trade failed for {signal['symbol']}: {error_msg}")
         
-        # Start trade in a separate thread
-        thread = threading.Thread(target=trade_thread, daemon=True)
-        thread.start()
+        # Create a background task
+        asyncio.create_task(place_and_record())
     
     async def run_trading_loop(self):
         """Main trading loop - runs every minute with heartbeat logging"""
@@ -794,7 +785,7 @@ class CrashBoomTrader:
                         signal = self.check_for_signal(symbol_name, df)
                         if signal:
                             self.execute_trade(signal)
-                            await asyncio.sleep(0)  # ✅ Let the event loop breathe
+                            await asyncio.sleep(0)  # Let the event loop breathe
                 
                 # Print status summary
                 win_rate = self.win_count/self.trade_count*100 if self.trade_count > 0 else 0
