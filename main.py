@@ -1,5 +1,5 @@
 # ============================================
-# main.py - Complete Crash/Boom Trading Bot (Render Ready)
+# main.py - FastAPI Version (Async Native)
 # ============================================
 import asyncio
 import json
@@ -8,7 +8,8 @@ import threading
 import time
 import warnings
 from datetime import datetime
-from flask import Flask, jsonify
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse, HTMLResponse
 import websockets
 import pandas as pd
 import numpy as np
@@ -27,8 +28,8 @@ load_dotenv()
 
 warnings.filterwarnings('ignore')
 
-# --- Flask App for Render ---
-app = Flask(__name__)
+# --- FastAPI App for Render ---
+app = FastAPI(title="Deriv Trading Bot", description="ML-powered trading bot for Crash/Boom indices")
 
 # --- Configuration from Environment Variables ---
 DERIV_APP_ID = os.environ.get('DERIV_APP_ID')
@@ -165,17 +166,20 @@ def validate_credentials():
     print(Fore.CYAN + "="*60)
     
     try:
+        # Get demo account
         account_id, currency = get_demo_account_id()
         if not account_id:
             raise Exception("No demo account found!")
         
+        # Get OTP URL
         otp_ws_url = get_otp_url(account_id)
         if not otp_ws_url:
             raise Exception("Failed to get OTP URL!")
         
+        # Get balance
         print(Fore.YELLOW + "📡 Fetching balance via OTP...")
         
-        # ✅ FIX: Handle running event loop properly
+        # ✅ FIX: Handle running event loop
         try:
             loop = asyncio.get_running_loop()
             balance, currency = loop.run_until_complete(get_balance_via_otp(otp_ws_url))
@@ -844,17 +848,24 @@ except Exception as e:
     trader = None
 
 def start_trading_loop():
+    """Start the trading loop in a separate thread with its own event loop"""
     global trader
     if not trader:
         print(Fore.RED + "❌ Trader not initialized, cannot start trading loop")
         return
+    
     print(Fore.GREEN + "🔄 Starting trading loop in background...")
+    
+    # Create a new event loop for this thread
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+    
     try:
         loop.run_until_complete(trader.run_trading_loop())
     except Exception as e:
         print(Fore.RED + f"❌ Trading loop error: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         loop.close()
         print(Fore.YELLOW + "🔄 Trading loop thread ended")
@@ -874,34 +885,37 @@ if trader:
 else:
     print(Fore.RED + "❌ Trader not initialized, cannot start trading loop")
 
-# --- Flask Routes ---
-@app.route('/')
-def home():
+# --- FastAPI Routes ---
+@app.get("/")
+async def home():
+    """Root endpoint - bot status"""
     if trader is None:
-        return jsonify({"error": "Trader not initialized - check logs"}), 500
+        raise HTTPException(status_code=503, detail="Trader not initialized")
     
-    status = {
-        "status": "running",
-        "bot": "Deriv Crash/Boom Trader (DEMO)",
-        "account_id": trader.account_id if trader else None,
-        "balance": f"{trader.currency} {trader.balance:.2f}" if trader else "USD 0.00",
-        "app_id": DERIV_APP_ID,
-        "symbols": list(SYMBOL_CONFIGS.keys()),
-        "models_loaded": trader.models_loaded if trader else False,
-        "trade_count": trader.trade_count if trader else 0,
-        "win_rate": f"{trader.win_count/trader.trade_count*100:.1f}%" if trader and trader.trade_count > 0 else "0%",
-        "total_profit": f"${trader.total_profit:.2f}" if trader else "$0.00",
-        "active_positions": len(trader.active_positions) if trader else 0,
-        "trading_enabled": ENABLE_TRADING,
-        "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    }
-    return jsonify(status)
+    try:
+        return {
+            "status": "running",
+            "bot": "Deriv Crash/Boom Trader (DEMO)",
+            "account_id": trader.account_id if trader else None,
+            "balance": f"{trader.currency} {trader.balance:.2f}" if trader else "USD 0.00",
+            "app_id": DERIV_APP_ID,
+            "symbols": list(SYMBOL_CONFIGS.keys()),
+            "models_loaded": trader.models_loaded if trader else False,
+            "trade_count": trader.trade_count if trader else 0,
+            "win_rate": f"{trader.win_count/trader.trade_count*100:.1f}%" if trader and trader.trade_count > 0 else "0%",
+            "total_profit": f"${trader.total_profit:.2f}" if trader else "$0.00",
+            "active_positions": len(trader.active_positions) if trader else 0,
+            "trading_enabled": ENABLE_TRADING,
+            "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.route('/dashboard')
-def dashboard():
-    """Simple Bootstrap dashboard - NO custom CSS"""
+@app.get("/dashboard")
+async def dashboard():
+    """Simple Bootstrap dashboard"""
     if trader is None:
-        return "<h1>❌ Trader not initialized</h1>", 500
+        return HTMLResponse(content="<h1>❌ Trader not initialized</h1>", status_code=503)
     
     try:
         # --- Helper function for symbol data ---
@@ -1148,18 +1162,19 @@ def dashboard():
 </body>
 </html>'''
         
-        return html
+        return HTMLResponse(content=html)
         
     except Exception as e:
         print(f"❌ Dashboard error: {e}")
         import traceback
         traceback.print_exc()
-        return f"<h1>❌ Dashboard Error</h1><p>{str(e)}</p><pre>{traceback.format_exc()}</pre>", 500
+        return HTMLResponse(content=f"<h1>❌ Dashboard Error</h1><p>{str(e)}</p><pre>{traceback.format_exc()}</pre>", status_code=500)
 
-@app.route('/status')
-def status():
+@app.get("/status")
+async def status():
+    """Detailed status endpoint"""
     if trader is None:
-        return jsonify({"error": "Trader not initialized - check logs"}), 500
+        raise HTTPException(status_code=503, detail="Trader not initialized")
     
     active_positions = {}
     for symbol, pos in trader.active_positions.items():
@@ -1172,7 +1187,7 @@ def status():
             "contract_id": pos.get('contract_id', 'N/A')
         }
     
-    return jsonify({
+    return {
         "status": "running",
         "account_id": trader.account_id,
         "balance": f"{trader.currency} {trader.balance:.2f}",
@@ -1187,27 +1202,29 @@ def status():
         "recent_trades": trader.recent_trades[:10] if hasattr(trader, 'recent_trades') else [],
         "trading_enabled": ENABLE_TRADING,
         "last_update": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    })
+    }
 
-@app.route('/toggle_trading')
-def toggle_trading():
+@app.post("/toggle_trading")
+async def toggle_trading():
+    """Toggle trading on/off"""
     global ENABLE_TRADING
     ENABLE_TRADING = not ENABLE_TRADING
     status = "ENABLED" if ENABLE_TRADING else "DISABLED"
     print(Fore.YELLOW + f"🔄 Trading {status}")
-    return jsonify({"trading_enabled": ENABLE_TRADING, "message": f"Trading {status}"})
+    return {"trading_enabled": ENABLE_TRADING, "message": f"Trading {status}"}
 
-@app.route('/stop')
-def stop_bot():
+@app.post("/stop")
+async def stop_bot():
+    """Stop the bot gracefully"""
     if trader:
         trader.running = False
-        return jsonify({"message": "Bot stopping..."})
-    return jsonify({"error": "Trader not found"}), 404
+        return {"message": "Bot stopping..."}
+    raise HTTPException(status_code=404, detail="Trader not found")
 
 # --- Main Entry Point ---
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 10000))
-    print(Fore.GREEN + f"\n🚀 Starting Flask server on port {port}")
+    print(Fore.GREEN + f"\n🚀 Starting FastAPI server on port {port}")
     
     if trader:
         thread_already_running = False
@@ -1222,4 +1239,5 @@ if __name__ == "__main__":
         else:
             print(Fore.GREEN + "✅ Trading thread already running")
     
-    app.run(host='0.0.0.0', port=port, debug=False)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=port)
