@@ -907,12 +907,12 @@ def home():
 
 @app.route('/dashboard')
 def dashboard():
-    """Real-time dashboard HTML page with error handling"""
+    """Real-time dashboard HTML page with price and update time"""
     if trader is None:
         return "<h1>❌ Trader not initialized</h1>", 500
-
+    
     try:
-        # --- Safe helper function for symbol data ---
+        # --- Helper function for symbol data ---
         def get_symbol_html(symbol_name, df):
             if df is None or df.empty:
                 return f'''
@@ -922,7 +922,17 @@ def dashboard():
                 </div>
                 '''
             try:
+                # Get last close price
                 price = df['close'].iloc[-1]
+                
+                # Get last update time
+                last_update = trader.last_update.get(symbol_name)
+                if last_update:
+                    update_time = last_update.strftime('%H:%M:%S')
+                else:
+                    update_time = "N/A"
+                
+                # Get prediction if available
                 pred = trader.predict_signal(symbol_name, df)
                 if pred:
                     conf = f"{pred['confidence']:.1%}" if pred['confidence'] else "N/A"
@@ -930,15 +940,15 @@ def dashboard():
                     signal = "BUY" if pred.get('signal') == "BUY" else "SELL" if pred.get('signal') == "SELL" else "N/A"
                     signal_class = "signal-buy" if signal == "BUY" else "signal-sell" if signal == "SELL" else "signal-none"
                 else:
-                    conf, dpo, signal = "N/A", "N/A", "N/A"
-                    signal_class = "signal-none"
-
+                    conf, dpo, signal, signal_class = "N/A", "N/A", "N/A", "signal-none"
+                
                 return f'''
                 <div class="symbol-card">
                     <div class="symbol">{symbol_name}</div>
                     <div class="price">${price:.4f}</div>
+                    <div class="update-time">🕐 {update_time}</div>
                     <div class="conf">Conf: {conf}</div>
-                    <div class="price">DPO: {dpo}</div>
+                    <div class="dpo">DPO: {dpo}</div>
                     <div class="signal {signal_class}">{signal}</div>
                     <div style="font-size:0.6em; color:#445566;">Multiplier: {SYMBOL_CONFIGS[symbol_name]['multiplier']}x</div>
                 </div>
@@ -954,13 +964,16 @@ def dashboard():
 
         # --- Build symbol data safely ---
         symbol_data = ""
-        for symbol_name, config in SYMBOL_CONFIGS.items():
+        for symbol_name in SYMBOL_CONFIGS.keys():
             df = trader.last_data.get(symbol_name)
             symbol_data += get_symbol_html(symbol_name, df)
 
+        # --- Get currency safely ---
+        currency = trader.currency if trader and hasattr(trader, 'currency') else 'USD'
+
         # --- Other data with safe defaults ---
         account_id = trader.account_id if trader and trader.account_id else 'N/A'
-        balance = f"{trader.currency} {trader.balance:.2f}" if trader and trader.balance is not None else 'USD 0.00'
+        balance = f"{currency} {trader.balance:.2f}" if trader and trader.balance is not None else 'USD 0.00'
         trade_count = trader.trade_count if trader and trader.trade_count is not None else 0
         win_count = trader.win_count if trader and trader.win_count is not None else 0
         loss_count = trader.loss_count if trader and trader.loss_count is not None else 0
@@ -1009,8 +1022,8 @@ def dashboard():
 
         bot_status = "🟢 ONLINE" if trader and trader.running else "🔴 OFFLINE"
 
-        # --- Build HTML ---
-        html = f'''
+        # --- HTML Template ---
+        html = '''
         <!DOCTYPE html>
         <html>
         <head>
@@ -1018,16 +1031,16 @@ def dashboard():
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Deriv Trading Bot Dashboard</title>
             <style>
-                * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-                body {{
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body {
                     font-family: 'Courier New', monospace;
                     background: #0a0e17;
                     color: #00ff88;
                     padding: 20px;
                     min-height: 100vh;
-                }}
-                .container {{ max-width: 1200px; margin: 0 auto; }}
-                h1 {{
+                }
+                .container { max-width: 1200px; margin: 0 auto; }
+                h1 {
                     color: #00ff88;
                     text-align: center;
                     font-size: 2em;
@@ -1035,91 +1048,93 @@ def dashboard():
                     text-shadow: 0 0 20px rgba(0,255,136,0.3);
                     border-bottom: 2px solid #00ff88;
                     padding-bottom: 10px;
-                }}
-                .grid {{
+                }
+                .grid {
                     display: grid;
                     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
                     gap: 20px;
                     margin: 20px 0;
-                }}
-                .card {{
+                }
+                .card {
                     background: #111927;
                     border: 1px solid #1a2d3d;
                     border-radius: 12px;
                     padding: 20px;
                     box-shadow: 0 4px 20px rgba(0,0,0,0.5);
                     transition: all 0.3s ease;
-                }}
-                .card:hover {{
+                }
+                .card:hover {
                     border-color: #00ff88;
                     box-shadow: 0 0 30px rgba(0,255,136,0.1);
-                }}
-                .card-title {{
+                }
+                .card-title {
                     color: #8899aa;
                     font-size: 0.8em;
                     text-transform: uppercase;
                     letter-spacing: 1px;
                     margin-bottom: 8px;
-                }}
-                .card-value {{
+                }
+                .card-value {
                     color: #00ff88;
                     font-size: 1.8em;
                     font-weight: bold;
-                }}
-                .card-value.warning {{ color: #ffaa00; }}
-                .card-value.danger {{ color: #ff4444; }}
-                .card-value.success {{ color: #00ff88; }}
-                .card-sub {{
+                }
+                .card-value.warning { color: #ffaa00; }
+                .card-value.danger { color: #ff4444; }
+                .card-value.success { color: #00ff88; }
+                .card-sub {
                     color: #667788;
                     font-size: 0.8em;
                     margin-top: 5px;
-                }}
-                .symbol-grid {{
+                }
+                .symbol-grid {
                     display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
                     gap: 10px;
                     margin: 10px 0;
-                }}
-                .symbol-card {{
+                }
+                .symbol-card {
                     background: #0d1520;
                     border: 1px solid #1a2d3d;
                     border-radius: 8px;
                     padding: 12px;
                     text-align: center;
-                }}
-                .symbol-card .symbol {{ color: #00ff88; font-weight: bold; font-size: 1.1em; }}
-                .symbol-card .conf {{ color: #ffaa00; font-size: 0.9em; margin: 4px 0; }}
-                .symbol-card .price {{ color: #8899aa; font-size: 0.8em; }}
-                .symbol-card .signal {{ font-weight: bold; font-size: 1.2em; }}
-                .signal-buy {{ color: #00ff88; }}
-                .signal-sell {{ color: #ff4444; }}
-                .signal-none {{ color: #667788; }}
-                .status-badge {{
+                }
+                .symbol-card .symbol { color: #00ff88; font-weight: bold; font-size: 1.1em; }
+                .symbol-card .price { color: #ffffff; font-size: 1.0em; margin: 4px 0; }
+                .symbol-card .update-time { color: #667788; font-size: 0.7em; margin: 2px 0; }
+                .symbol-card .conf { color: #ffaa00; font-size: 0.9em; margin: 4px 0; }
+                .symbol-card .dpo { color: #8899aa; font-size: 0.8em; }
+                .symbol-card .signal { font-weight: bold; font-size: 1.2em; }
+                .signal-buy { color: #00ff88; }
+                .signal-sell { color: #ff4444; }
+                .signal-none { color: #667788; }
+                .status-badge {
                     display: inline-block;
                     padding: 4px 12px;
                     border-radius: 20px;
                     font-size: 0.8em;
                     font-weight: bold;
-                }}
-                .status-running {{
+                }
+                .status-running {
                     background: #00ff8822;
                     color: #00ff88;
                     border: 1px solid #00ff88;
-                }}
-                .status-stopped {{
+                }
+                .status-stopped {
                     background: #ff444422;
                     color: #ff4444;
                     border: 1px solid #ff4444;
-                }}
-                .footer {{
+                }
+                .footer {
                     text-align: center;
                     color: #445566;
                     font-size: 0.8em;
                     margin-top: 30px;
                     padding-top: 20px;
                     border-top: 1px solid #1a2d3d;
-                }}
-                .refresh-btn {{
+                }
+                .refresh-btn {
                     background: #00ff8822;
                     color: #00ff88;
                     border: 1px solid #00ff88;
@@ -1131,24 +1146,24 @@ def dashboard():
                     margin: 10px auto;
                     display: block;
                     transition: all 0.3s;
-                }}
-                .refresh-btn:hover {{
+                }
+                .refresh-btn:hover {
                     background: #00ff8844;
                     box-shadow: 0 0 20px rgba(0,255,136,0.2);
-                }}
-                .trade-log {{
+                }
+                .trade-log {
                     max-height: 300px;
                     overflow-y: auto;
                     font-size: 0.8em;
                     color: #8899aa;
-                }}
-                .trade-log .trade-item {{
+                }
+                .trade-log .trade-item {
                     padding: 4px 0;
                     border-bottom: 1px solid #0d1520;
-                }}
-                .trade-log .win {{ color: #00ff88; }}
-                .trade-log .loss {{ color: #ff4444; }}
-                .live-indicator {{
+                }
+                .trade-log .win { color: #00ff88; }
+                .trade-log .loss { color: #ff4444; }
+                .live-indicator {
                     display: inline-block;
                     width: 10px;
                     height: 10px;
@@ -1156,18 +1171,23 @@ def dashboard():
                     background: #00ff88;
                     animation: pulse 2s infinite;
                     margin-right: 8px;
-                }}
-                @keyframes pulse {{
-                    0% {{ opacity: 1; }}
-                    50% {{ opacity: 0.3; }}
-                    100% {{ opacity: 1; }}
-                }}
-                .last-update {{
+                }
+                @keyframes pulse {
+                    0% { opacity: 1; }
+                    50% { opacity: 0.3; }
+                    100% { opacity: 1; }
+                }
+                .last-update {
                     color: #667788;
                     font-size: 0.8em;
                     text-align: center;
                     margin: 10px 0;
-                }}
+                }
+                .balance-change {
+                    font-size: 0.6em;
+                    color: #667788;
+                    margin-left: 8px;
+                }
             </style>
         </head>
         <body>
@@ -1219,7 +1239,7 @@ def dashboard():
                 </div>
                 
                 <h2 style="color: #00ff88; font-size:1.2em; margin: 20px 0 10px;">📊 Symbol Analysis</h2>
-                <div class="symbol-grid">
+                <div class="symbol-grid" id="symbolGrid">
                     {symbol_data}
                 </div>
                 
@@ -1237,17 +1257,17 @@ def dashboard():
             </div>
             
             <script>
-                function updateTime() {{
+                function updateTime() {
                     const now = new Date();
                     document.getElementById('serverTime').textContent = 'Server Time: ' + now.toLocaleString();
-                }}
+                }
                 setInterval(updateTime, 1000);
                 updateTime();
                 
                 // Auto-refresh every 60 seconds
-                setTimeout(function() {{
+                setTimeout(function() {
                     location.reload();
-                }}, 60000);
+                }, 60000);
                 
                 // Update last update time
                 document.getElementById('lastUpdate').textContent = '⏰ Last Update: ' + new Date().toLocaleString();
@@ -1256,11 +1276,11 @@ def dashboard():
         </html>
         '''
         
-        # Format with all variables
-        return html.format(
+        # Format the HTML with all variables
+        html = html.format(
             account_id=account_id,
             balance=balance,
-            currency=trader.currency if trader else 'USD',
+            currency=currency,
             trade_count=trade_count,
             win_count=win_count,
             loss_count=loss_count,
@@ -1278,12 +1298,14 @@ def dashboard():
             uptime=uptime,
             bot_status=bot_status
         )
-
+        
+        return html
+        
     except Exception as e:
         print(f"❌ Dashboard error: {e}")
         import traceback
         traceback.print_exc()
-        return f"<h1>❌ Dashboard Error</h1><p>{str(e)}</p><pre>{traceback.format_exc()}</pre>", 500
+        return f"<h1>❌ Dashboard Error</h1><p>{str(e)}</p>", 500
 
 @app.route('/status')
 def status():
