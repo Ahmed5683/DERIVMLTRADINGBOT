@@ -922,17 +922,10 @@ def dashboard():
                 </div>
                 '''
             try:
-                # Get last close price
                 price = df['close'].iloc[-1]
-                
-                # Get last update time
                 last_update = trader.last_update.get(symbol_name)
-                if last_update:
-                    update_time = last_update.strftime('%H:%M:%S')
-                else:
-                    update_time = "N/A"
+                update_time = last_update.strftime('%H:%M:%S') if last_update else "N/A"
                 
-                # Get prediction if available
                 pred = trader.predict_signal(symbol_name, df)
                 if pred:
                     conf = f"{pred['confidence']:.1%}" if pred['confidence'] else "N/A"
@@ -950,7 +943,7 @@ def dashboard():
                     <div class="conf">Conf: {conf}</div>
                     <div class="dpo">DPO: {dpo}</div>
                     <div class="signal {signal_class}">{signal}</div>
-                    <div style="font-size:0.6em; color:#445566;">Multiplier: {SYMBOL_CONFIGS[symbol_name]['multiplier']}x</div>
+                    <div style="font-size:0.6em;color:#445566;">Multiplier: {SYMBOL_CONFIGS[symbol_name]['multiplier']}x</div>
                 </div>
                 '''
             except Exception as e:
@@ -962,16 +955,14 @@ def dashboard():
                 </div>
                 '''
 
-        # --- Build symbol data safely ---
+        # --- Build symbol data ---
         symbol_data = ""
         for symbol_name in SYMBOL_CONFIGS.keys():
             df = trader.last_data.get(symbol_name)
             symbol_data += get_symbol_html(symbol_name, df)
 
-        # --- Get currency safely ---
+        # --- Get data safely ---
         currency = trader.currency if trader and hasattr(trader, 'currency') else 'USD'
-
-        # --- Other data with safe defaults ---
         account_id = trader.account_id if trader and trader.account_id else 'N/A'
         balance = f"{currency} {trader.balance:.2f}" if trader and trader.balance is not None else 'USD 0.00'
         trade_count = trader.trade_count if trader and trader.trade_count is not None else 0
@@ -1022,230 +1013,65 @@ def dashboard():
 
         bot_status = "🟢 ONLINE" if trader and trader.running else "🔴 OFFLINE"
 
-        # --- HTML Template with proper CSS ---
-        html = '''
-        <!DOCTYPE html>
+        # --- HTML Template with clean CSS (no newlines in property names) ---
+        html = '''<!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Deriv Trading Bot Dashboard</title>
             <style>
-                * {
-                    margin: 0;
-                    padding: 0;
-                    box-sizing: border-box;
-                }
-                body {
-                    font-family: 'Courier New', monospace;
-                    background: #0a0e17;
-                    color: #00ff88;
-                    padding: 20px;
-                    min-height: 100vh;
-                }
-                .container {
-                    max-width: 1200px;
-                    margin: 0 auto;
-                }
-                h1 {
-                    color: #00ff88;
-                    text-align: center;
-                    font-size: 2em;
-                    margin-bottom: 20px;
-                    text-shadow: 0 0 20px rgba(0,255,136,0.3);
-                    border-bottom: 2px solid #00ff88;
-                    padding-bottom: 10px;
-                }
-                .grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-                    gap: 20px;
-                    margin: 20px 0;
-                }
-                .card {
-                    background: #111927;
-                    border: 1px solid #1a2d3d;
-                    border-radius: 12px;
-                    padding: 20px;
-                    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-                    transition: all 0.3s ease;
-                }
-                .card:hover {
-                    border-color: #00ff88;
-                    box-shadow: 0 0 30px rgba(0,255,136,0.1);
-                }
-                .card-title {
-                    color: #8899aa;
-                    font-size: 0.8em;
-                    text-transform: uppercase;
-                    letter-spacing: 1px;
-                    margin-bottom: 8px;
-                }
-                .card-value {
-                    color: #00ff88;
-                    font-size: 1.8em;
-                    font-weight: bold;
-                }
-                .card-value.warning {
-                    color: #ffaa00;
-                }
-                .card-value.danger {
-                    color: #ff4444;
-                }
-                .card-value.success {
-                    color: #00ff88;
-                }
-                .card-sub {
-                    color: #667788;
-                    font-size: 0.8em;
-                    margin-top: 5px;
-                }
-                .symbol-grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-                    gap: 10px;
-                    margin: 10px 0;
-                }
-                .symbol-card {
-                    background: #0d1520;
-                    border: 1px solid #1a2d3d;
-                    border-radius: 8px;
-                    padding: 12px;
-                    text-align: center;
-                }
-                .symbol-card .symbol {
-                    color: #00ff88;
-                    font-weight: bold;
-                    font-size: 1.1em;
-                }
-                .symbol-card .price {
-                    color: #ffffff;
-                    font-size: 1.0em;
-                    margin: 4px 0;
-                }
-                .symbol-card .update-time {
-                    color: #667788;
-                    font-size: 0.7em;
-                    margin: 2px 0;
-                }
-                .symbol-card .conf {
-                    color: #ffaa00;
-                    font-size: 0.9em;
-                    margin: 4px 0;
-                }
-                .symbol-card .dpo {
-                    color: #8899aa;
-                    font-size: 0.8em;
-                }
-                .symbol-card .signal {
-                    font-weight: bold;
-                    font-size: 1.2em;
-                }
-                .signal-buy {
-                    color: #00ff88;
-                }
-                .signal-sell {
-                    color: #ff4444;
-                }
-                .signal-none {
-                    color: #667788;
-                }
-                .status-badge {
-                    display: inline-block;
-                    padding: 4px 12px;
-                    border-radius: 20px;
-                    font-size: 0.8em;
-                    font-weight: bold;
-                }
-                .status-running {
-                    background: #00ff8822;
-                    color: #00ff88;
-                    border: 1px solid #00ff88;
-                }
-                .status-stopped {
-                    background: #ff444422;
-                    color: #ff4444;
-                    border: 1px solid #ff4444;
-                }
-                .footer {
-                    text-align: center;
-                    color: #445566;
-                    font-size: 0.8em;
-                    margin-top: 30px;
-                    padding-top: 20px;
-                    border-top: 1px solid #1a2d3d;
-                }
-                .refresh-btn {
-                    background: #00ff8822;
-                    color: #00ff88;
-                    border: 1px solid #00ff88;
-                    padding: 8px 20px;
-                    border-radius: 6px;
-                    cursor: pointer;
-                    font-family: 'Courier New', monospace;
-                    font-size: 0.9em;
-                    margin: 10px auto;
-                    display: block;
-                    transition: all 0.3s;
-                }
-                .refresh-btn:hover {
-                    background: #00ff8844;
-                    box-shadow: 0 0 20px rgba(0,255,136,0.2);
-                }
-                .trade-log {
-                    max-height: 300px;
-                    overflow-y: auto;
-                    font-size: 0.8em;
-                    color: #8899aa;
-                }
-                .trade-log .trade-item {
-                    padding: 4px 0;
-                    border-bottom: 1px solid #0d1520;
-                }
-                .trade-log .win {
-                    color: #00ff88;
-                }
-                .trade-log .loss {
-                    color: #ff4444;
-                }
-                .live-indicator {
-                    display: inline-block;
-                    width: 10px;
-                    height: 10px;
-                    border-radius: 50%;
-                    background: #00ff88;
-                    animation: pulse 2s infinite;
-                    margin-right: 8px;
-                }
-                @keyframes pulse {
-                    0% { opacity: 1; }
-                    50% { opacity: 0.3; }
-                    100% { opacity: 1; }
-                }
-                .last-update {
-                    color: #667788;
-                    font-size: 0.8em;
-                    text-align: center;
-                    margin: 10px 0;
-                }
-                .balance-change {
-                    font-size: 0.6em;
-                    color: #667788;
-                    margin-left: 8px;
-                }
+                * { margin:0; padding:0; box-sizing:border-box; }
+                body { font-family:'Courier New',monospace; background:#0a0e17; color:#00ff88; padding:20px; min-height:100vh; }
+                .container { max-width:1200px; margin:0 auto; }
+                h1 { color:#00ff88; text-align:center; font-size:2em; margin-bottom:20px; text-shadow:0 0 20px rgba(0,255,136,0.3); border-bottom:2px solid #00ff88; padding-bottom:10px; }
+                .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:20px; margin:20px 0; }
+                .card { background:#111927; border:1px solid #1a2d3d; border-radius:12px; padding:20px; box-shadow:0 4px 20px rgba(0,0,0,0.5); transition:all 0.3s ease; }
+                .card:hover { border-color:#00ff88; box-shadow:0 0 30px rgba(0,255,136,0.1); }
+                .card-title { color:#8899aa; font-size:0.8em; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
+                .card-value { color:#00ff88; font-size:1.8em; font-weight:bold; }
+                .card-value.warning { color:#ffaa00; }
+                .card-value.danger { color:#ff4444; }
+                .card-value.success { color:#00ff88; }
+                .card-sub { color:#667788; font-size:0.8em; margin-top:5px; }
+                .symbol-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; margin:10px 0; }
+                .symbol-card { background:#0d1520; border:1px solid #1a2d3d; border-radius:8px; padding:12px; text-align:center; }
+                .symbol-card .symbol { color:#00ff88; font-weight:bold; font-size:1.1em; }
+                .symbol-card .price { color:#ffffff; font-size:1.0em; margin:4px 0; }
+                .symbol-card .update-time { color:#667788; font-size:0.7em; margin:2px 0; }
+                .symbol-card .conf { color:#ffaa00; font-size:0.9em; margin:4px 0; }
+                .symbol-card .dpo { color:#8899aa; font-size:0.8em; }
+                .symbol-card .signal { font-weight:bold; font-size:1.2em; }
+                .signal-buy { color:#00ff88; }
+                .signal-sell { color:#ff4444; }
+                .signal-none { color:#667788; }
+                .status-badge { display:inline-block; padding:4px 12px; border-radius:20px; font-size:0.8em; font-weight:bold; }
+                .status-running { background:#00ff8822; color:#00ff88; border:1px solid #00ff88; }
+                .status-stopped { background:#ff444422; color:#ff4444; border:1px solid #ff4444; }
+                .footer { text-align:center; color:#445566; font-size:0.8em; margin-top:30px; padding-top:20px; border-top:1px solid #1a2d3d; }
+                .refresh-btn { background:#00ff8822; color:#00ff88; border:1px solid #00ff88; padding:8px 20px; border-radius:6px; cursor:pointer; font-family:'Courier New',monospace; font-size:0.9em; margin:10px auto; display:block; transition:all 0.3s; }
+                .refresh-btn:hover { background:#00ff8844; box-shadow:0 0 20px rgba(0,255,136,0.2); }
+                .trade-log { max-height:300px; overflow-y:auto; font-size:0.8em; color:#8899aa; }
+                .trade-log .trade-item { padding:4px 0; border-bottom:1px solid #0d1520; }
+                .trade-log .win { color:#00ff88; }
+                .trade-log .loss { color:#ff4444; }
+                .live-indicator { display:inline-block; width:10px; height:10px; border-radius:50%; background:#00ff88; animation:pulse 2s infinite; margin-right:8px; }
+                @keyframes pulse { 0% { opacity:1; } 50% { opacity:0.3; } 100% { opacity:1; } }
+                .last-update { color:#667788; font-size:0.8em; text-align:center; margin:10px 0; }
+                .balance-change { font-size:0.6em; color:#667788; margin-left:8px; }
             </style>
         </head>
         <body>
             <div class="container">
                 <h1>🔴 DERIV TRADING BOT</h1>
-                <div style="text-align: center; margin-bottom: 10px;">
+                <div style="text-align:center;margin-bottom:10px;">
                     <span class="status-badge status-running">
                         <span class="live-indicator"></span> LIVE
                     </span>
-                    <span style="color: #667788; margin-left: 15px;">|</span>
-                    <span style="color: #667788;">Account: {account_id}</span>
-                    <span style="color: #667788; margin-left: 15px;">|</span>
-                    <span style="color: #667788;">Models: {models_loaded}</span>
+                    <span style="color:#667788;margin-left:15px;">|</span>
+                    <span style="color:#667788;">Account: {account_id}</span>
+                    <span style="color:#667788;margin-left:15px;">|</span>
+                    <span style="color:#667788;">Models: {models_loaded}</span>
                 </div>
                 <div class="last-update" id="lastUpdate">⏰ Last Update: Loading...</div>
                 <button class="refresh-btn" onclick="location.reload()">🔄 Refresh Data</button>
@@ -1283,12 +1109,12 @@ def dashboard():
                     </div>
                 </div>
                 
-                <h2 style="color: #00ff88; font-size:1.2em; margin: 20px 0 10px;">📊 Symbol Analysis</h2>
+                <h2 style="color:#00ff88;font-size:1.2em;margin:20px 0 10px;">📊 Symbol Analysis</h2>
                 <div class="symbol-grid" id="symbolGrid">
                     {symbol_data}
                 </div>
                 
-                <h2 style="color: #00ff88; font-size:1.2em; margin: 20px 0 10px;">📋 Recent Trades</h2>
+                <h2 style="color:#00ff88;font-size:1.2em;margin:20px 0 10px;">📋 Recent Trades</h2>
                 <div class="card">
                     <div class="trade-log">
                         {trade_log}
@@ -1308,18 +1134,11 @@ def dashboard():
                 }
                 setInterval(updateTime, 1000);
                 updateTime();
-                
-                // Auto-refresh every 60 seconds
-                setTimeout(function() {
-                    location.reload();
-                }, 60000);
-                
-                // Update last update time
+                setTimeout(function() { location.reload(); }, 60000);
                 document.getElementById('lastUpdate').textContent = '⏰ Last Update: ' + new Date().toLocaleString();
             </script>
         </body>
-        </html>
-        '''
+        </html>'''
         
         # Format the HTML with all variables
         html = html.format(
