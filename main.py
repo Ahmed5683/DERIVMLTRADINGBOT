@@ -9,7 +9,7 @@ import time
 import warnings
 from datetime import datetime
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import HTMLResponse
 import websockets
 import pandas as pd
 import numpy as np
@@ -29,22 +29,19 @@ load_dotenv()
 warnings.filterwarnings('ignore')
 
 # --- FastAPI App for Render ---
-app = FastAPI(title="Deriv Trading Bot", description="ML-powered trading bot for Crash/Boom indices")
+app = FastAPI(title="Deriv Trading Bot")
 
 # --- Configuration from Environment Variables ---
 DERIV_APP_ID = os.environ.get('DERIV_APP_ID')
 DERIV_TOKEN = os.environ.get('DERIV_TOKEN')
 
-# Validate environment variables
 if not DERIV_APP_ID:
     raise Exception("❌ DERIV_APP_ID environment variable is REQUIRED for trading!")
 if not DERIV_TOKEN:
     raise Exception("❌ DERIV_TOKEN environment variable is REQUIRED for trading!")
 
-# ✅ CORRECT - Public WebSocket endpoint for market data
 PUBLIC_WS_URL = "wss://api.derivws.com/trading/v1/options/ws/public"
 
-# Trading Parameters - All configurable via environment variables
 CONFIDENCE_THRESHOLD = float(os.environ.get('CONFIDENCE_THRESHOLD', '0.60'))
 BASE_STAKE = float(os.environ.get('BASE_STAKE', '1.0'))
 TP_MULTIPLIER = float(os.environ.get('TP_MULTIPLIER', '1.5'))
@@ -56,7 +53,6 @@ print(Fore.CYAN + "="*70)
 print(Fore.CYAN + f"🌐 WebSocket URL: {PUBLIC_WS_URL}")
 print(Fore.CYAN + "="*70)
 
-# ✅ CORRECT CRASH AND BOOM SYMBOLS
 SYMBOL_CONFIGS = {
     "CRASH500": {"symbol": "CRASH500", "type": "CRASH", "multiplier": 400},
     "CRASH600": {"symbol": "CRASH600", "type": "CRASH", "multiplier": 400},
@@ -69,7 +65,6 @@ SYMBOL_CONFIGS = {
 
 # --- Account Functions ---
 def get_demo_account_id():
-    """Get DEMO account ID using REST API"""
     print(Fore.YELLOW + "📡 Getting demo account ID...")
     url = "https://api.derivws.com/trading/v1/options/accounts"
     headers = {
@@ -79,7 +74,6 @@ def get_demo_account_id():
     
     try:
         response = requests.get(url, headers=headers, timeout=30)
-        
         if response.status_code != 200:
             error = response.json().get('error', {}).get('message', 'Unknown error')
             raise Exception(f"Failed to get accounts: {error}")
@@ -87,7 +81,6 @@ def get_demo_account_id():
         data = response.json()
         accounts = data.get('data', [])
         
-        # Find the demo account
         demo_account = None
         for account in accounts:
             if account.get('account_type') == 'demo':
@@ -107,7 +100,6 @@ def get_demo_account_id():
         return None, None
 
 def get_otp_url(account_id):
-    """Request OTP URL for authenticated WebSocket"""
     print(Fore.YELLOW + f"📡 Getting OTP URL for demo account {account_id}...")
     url = f"https://api.derivws.com/trading/v1/options/accounts/{account_id}/otp"
     headers = {
@@ -117,13 +109,11 @@ def get_otp_url(account_id):
     
     try:
         response = requests.post(url, headers=headers, timeout=30)
-        
         if response.status_code != 200:
             error = response.json().get('error', {}).get('message', 'Unknown error')
             raise Exception(f"OTP request failed: {error}")
         
         data = response.json()
-        
         if not data.get('data') or not data['data'].get('url'):
             raise Exception("No OTP URL found in response")
         
@@ -135,7 +125,6 @@ def get_otp_url(account_id):
         return None
 
 async def get_balance_via_otp(ws_url):
-    """Get balance using OTP-authenticated WebSocket"""
     try:
         async with websockets.connect(ws_url) as websocket:
             request = {
@@ -161,25 +150,20 @@ async def get_balance_via_otp(ws_url):
         return None, None
 
 def validate_credentials():
-    """Validate credentials and get demo account balance"""
     print(Fore.CYAN + "\n🔍 Validating Deriv Credentials...")
     print(Fore.CYAN + "="*60)
     
     try:
-        # Get demo account
         account_id, currency = get_demo_account_id()
         if not account_id:
             raise Exception("No demo account found!")
         
-        # Get OTP URL
         otp_ws_url = get_otp_url(account_id)
         if not otp_ws_url:
             raise Exception("Failed to get OTP URL!")
         
-        # Get balance
         print(Fore.YELLOW + "📡 Fetching balance via OTP...")
         
-        # ✅ FIX: Use a ThreadPoolExecutor to run the async function in a separate thread
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(asyncio.run, get_balance_via_otp(otp_ws_url))
@@ -225,7 +209,6 @@ class CrashBoomTrader:
         self.trade_log = []
         self.last_cycle_time = None
         
-        # Validate credentials and get demo account
         is_valid, account_id, balance, currency = validate_credentials()
         if not is_valid:
             raise Exception("❌ Credential validation failed. Please check your App ID and Token.")
@@ -253,7 +236,6 @@ class CrashBoomTrader:
         print(Fore.CYAN + "="*70)
     
     def load_models(self):
-        """Load all saved ML models from their respective folders"""
         print(Fore.YELLOW + "\n📂 Loading models...")
         base_model_dir = "models"
         
@@ -307,7 +289,6 @@ class CrashBoomTrader:
         print(Fore.GREEN + f"\n✅ All {len(self.models)} models loaded successfully!")
     
     async def connect_websocket(self):
-        """Connect to Deriv Public WebSocket for market data"""
         try:
             if self.websocket:
                 try:
@@ -323,8 +304,8 @@ class CrashBoomTrader:
             print(Fore.RED + f"❌ Connection error: {e}")
             return False
     
-    async def fetch_1min_candles(self, symbol, count=200):
-        """Fetch 1-minute candle data for a symbol"""
+    async def fetch_1min_candles(self, symbol, count=300):
+        """Fetch 1-minute candle data for a symbol - 300 candles for DPO"""
         try:
             if not self.websocket:
                 if not await self.connect_websocket():
@@ -374,14 +355,11 @@ class CrashBoomTrader:
             return None
     
     async def place_trade(self, symbol, contract_type):
-        """Place a trade using the demo account"""
         try:
-            # Check if trading is enabled
             if not ENABLE_TRADING:
                 print(Fore.YELLOW + "⚠️ Trading is disabled. Set ENABLE_TRADING=true to enable.")
                 return {'success': False, 'error': 'Trading disabled'}
             
-            # Get fresh OTP URL for trading
             otp_ws_url = get_otp_url(self.account_id)
             if not otp_ws_url:
                 print(Fore.RED + f"❌ Failed to get OTP URL for trade")
@@ -391,7 +369,6 @@ class CrashBoomTrader:
             multiplier = config['multiplier']
             
             async with websockets.connect(otp_ws_url) as ws:
-                # Get proposal
                 proposal_request = {
                     "proposal": 1,
                     "amount": BASE_STAKE,
@@ -423,7 +400,6 @@ class CrashBoomTrader:
                     print(Fore.RED + "❌ No proposal ID received")
                     return {'success': False, 'error': 'No proposal ID'}
                 
-                # Buy the contract
                 buy_request = {
                     "buy": proposal_id,
                     "price": ask_price
@@ -458,31 +434,51 @@ class CrashBoomTrader:
         """Calculate technical indicators for 1-minute data"""
         close_prices = df['close'].values.tolist()
         
-        # DPO
+        # ✅ DPO - Fixed calculation
         try:
             dpo = DPO(250, input_values=close_prices)
-            df['dpo'] = dpo
-        except:
+            if dpo:
+                dpo_values = list(dpo)
+                padding = len(close_prices) - len(dpo_values)
+                if padding > 0:
+                    dpo_values = [np.nan] * padding + dpo_values
+                df['dpo'] = dpo_values
+            else:
+                df['dpo'] = 0
+        except Exception as e:
+            print(f"⚠️ DPO calculation error: {e}")
             df['dpo'] = 0
         
         # MACD Histogram
         try:
             macd = MACD(36, 120, 36, input_values=close_prices)
-            df['macd_hist'] = [v.histogram if v else 0 for v in macd]
+            macd_values = [v.histogram if v else 0 for v in macd]
+            padding = len(close_prices) - len(macd_values)
+            if padding > 0:
+                macd_values = [np.nan] * padding + macd_values
+            df['macd_hist'] = macd_values
         except:
             df['macd_hist'] = 0
         
         # StochRSI
         try:
             stoch_rsi = StochRSI(300, 250, 80, 9, input_values=close_prices)
-            df['stoch_rsi'] = [v.k if v else 50 for v in stoch_rsi]
+            stoch_values = [v.k if v else 50 for v in stoch_rsi]
+            padding = len(close_prices) - len(stoch_values)
+            if padding > 0:
+                stoch_values = [np.nan] * padding + stoch_values
+            df['stoch_rsi'] = stoch_values
         except:
             df['stoch_rsi'] = 50
         
         # RSI
         try:
             rsi = RSI(14, input_values=close_prices)
-            df['rsi'] = rsi
+            rsi_values = list(rsi) if rsi else [50] * len(close_prices)
+            padding = len(close_prices) - len(rsi_values)
+            if padding > 0:
+                rsi_values = [np.nan] * padding + rsi_values
+            df['rsi'] = rsi_values
         except:
             df['rsi'] = 50
         
@@ -524,14 +520,12 @@ class CrashBoomTrader:
         df['breakout_high'] = (df['high'] > df['high'].rolling(10).max().shift(1)).astype(int)
         df['breakout_low'] = (df['low'] < df['low'].rolling(10).min().shift(1)).astype(int)
         
-        # Fill NaN
-        df = df.fillna(method='ffill').fillna(method='bfill')
-        df = df.fillna(0)
+        # Fill NaN with ffill, bfill, then 0 as last resort
+        df = df.fillna(method='ffill').fillna(method='bfill').fillna(0)
         
         return df
     
     def predict_signal(self, symbol_name, df):
-        """Predict trading signal using ML model"""
         if symbol_name not in self.models:
             raise Exception(f"❌ No model found for {symbol_name}")
         
@@ -542,7 +536,6 @@ class CrashBoomTrader:
             df = self.calculate_features(df)
             latest = df.iloc[-1:].copy()
             
-            # Different features for CRASH and BOOM
             if "CRASH" in symbol_name:
                 feature_cols = [
                     'stoch_rsi', 'macd_hist', 'trend', 'dpo', 'rsi',
@@ -558,7 +551,6 @@ class CrashBoomTrader:
                     'near_resistance', 'near_support', 'breakout_high'
                 ]
             
-            # Prepare features
             feature_data = {}
             for col in feature_cols:
                 if col in latest.columns:
@@ -568,11 +560,9 @@ class CrashBoomTrader:
             
             X_signal = pd.DataFrame([feature_data]).fillna(0)
             
-            # Transform using loaded models
             X_imp = pd.DataFrame(self.imputers[symbol_name].transform(X_signal), columns=X_signal.columns)
             X_scaled = self.scalers[symbol_name].transform(X_imp)
             
-            # Predict
             prob = self.models[symbol_name].predict_proba(X_scaled)[0, 1]
             dpo_value = latest.get('dpo', 0).values[0] if 'dpo' in latest else 0
             
@@ -587,7 +577,6 @@ class CrashBoomTrader:
             return None
     
     def check_for_signal(self, symbol_name, df):
-        """Check for entry signal"""
         if symbol_name in self.active_positions:
             return None
         
@@ -631,7 +620,6 @@ class CrashBoomTrader:
         }
     
     def manage_position(self, symbol_name, df):
-        """Manage open position - check TP/SL"""
         if symbol_name not in self.active_positions:
             return
         
@@ -662,7 +650,6 @@ class CrashBoomTrader:
                 return
     
     def close_position(self, symbol_name, reason, profit):
-        """Close position and update statistics"""
         position = self.active_positions.pop(symbol_name)
         
         self.trade_count += 1
@@ -673,7 +660,6 @@ class CrashBoomTrader:
         self.total_profit += profit
         self.balance += profit
         
-        # Store in recent trades
         trade_record = {
             'symbol': symbol_name,
             'reason': reason,
@@ -701,7 +687,6 @@ class CrashBoomTrader:
         print(color + f"   Balance: ${self.balance:.2f}")
     
     def execute_trade(self, signal):
-        """Execute a new trade as a background task"""
         print(Fore.CYAN + f"\n🟢 TRADE SIGNAL DETECTED - {signal['symbol']}")
         print(Fore.CYAN + f"   Signal: {signal['signal']}")
         print(Fore.CYAN + f"   Confidence: {signal['confidence']:.2%}")
@@ -735,7 +720,6 @@ class CrashBoomTrader:
         asyncio.create_task(place_and_record())
     
     async def run_trading_loop(self):
-        """Main trading loop - runs every minute with timeout protection"""
         print(Fore.CYAN + "\n🟢 STARTING LIVE TRADING LOOP")
         print(Fore.CYAN + "Fetching 1-minute candles for all symbols every 60 seconds...")
         print(Fore.YELLOW + f"⚡ Trading on EVERY valid signal (no rate limiting)")
@@ -751,10 +735,9 @@ class CrashBoomTrader:
                 
                 print(Fore.CYAN + f"\n⏰ Cycle #{cycle_count} - {current_time}")
                 
-                # Fetch and analyze all symbols
                 for symbol_name, config in SYMBOL_CONFIGS.items():
                     try:
-                        df = await self.fetch_1min_candles(config['symbol'], count=200)
+                        df = await self.fetch_1min_candles(config['symbol'], count=300)
                         
                         if df is None or df.empty:
                             if ENABLE_LOGGING:
@@ -764,7 +747,6 @@ class CrashBoomTrader:
                         self.last_data[symbol_name] = df
                         self.last_update[symbol_name] = datetime.now()
                         
-                        # Show prediction confidence
                         pred = self.predict_signal(symbol_name, df)
                         if pred and ENABLE_LOGGING:
                             conf_str = f"Conf: {pred['confidence']:.1%}" if pred['confidence'] else "N/A"
@@ -773,22 +755,19 @@ class CrashBoomTrader:
                         elif ENABLE_LOGGING:
                             print(Fore.WHITE + f"  📊 {symbol_name}: close: {df['close'].iloc[-1]:.4f}")
                         
-                        # Manage existing position
                         self.manage_position(symbol_name, df)
                         
-                        # Check for new signal (only if not in position)
                         if symbol_name not in self.active_positions:
                             signal = self.check_for_signal(symbol_name, df)
                             if signal:
                                 self.execute_trade(signal)
-                                await asyncio.sleep(0)  # Let the event loop breathe
+                                await asyncio.sleep(0)
                     except Exception as e:
                         print(Fore.RED + f"❌ Error processing {symbol_name}: {e}")
                         import traceback
                         traceback.print_exc()
                         continue
                 
-                # Print status summary
                 win_rate = self.win_count/self.trade_count*100 if self.trade_count > 0 else 0
                 print(Fore.CYAN + f"\n📊 STATUS SUMMARY:")
                 print(Fore.CYAN + f"   Trades: {self.trade_count} (Wins: {Fore.GREEN}{self.win_count}{Fore.CYAN} | Losses: {Fore.RED}{self.loss_count}{Fore.CYAN})")
@@ -797,7 +776,6 @@ class CrashBoomTrader:
                 print(Fore.CYAN + f"   Balance: ${self.balance:.2f}")
                 print(Fore.CYAN + f"   Active Positions: {len(self.active_positions)}")
                 
-                # Refresh balance every 5 cycles
                 if cycle_count % 5 == 0:
                     try:
                         otp_url = get_otp_url(self.account_id)
@@ -809,7 +787,6 @@ class CrashBoomTrader:
                     except Exception as e:
                         print(Fore.YELLOW + f"⚠️ Balance refresh failed: {e}")
                 
-                # Sleep with timeout protection
                 print(Fore.YELLOW + f"⏳ Waiting 60 seconds for next cycle...")
                 try:
                     await asyncio.sleep(60)
@@ -847,7 +824,6 @@ except Exception as e:
     trader = None
 
 def start_trading_loop():
-    """Start the trading loop in a separate thread with its own event loop"""
     global trader
     if not trader:
         print(Fore.RED + "❌ Trader not initialized, cannot start trading loop")
@@ -855,7 +831,6 @@ def start_trading_loop():
     
     print(Fore.GREEN + "🔄 Starting trading loop in background...")
     
-    # Create a new event loop for this thread
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
@@ -887,37 +862,11 @@ else:
 # --- FastAPI Routes ---
 @app.get("/")
 async def home():
-    """Root endpoint - bot status"""
-    if trader is None:
-        raise HTTPException(status_code=503, detail="Trader not initialized")
-    
-    try:
-        return {
-            "status": "running",
-            "bot": "Deriv Crash/Boom Trader (DEMO)",
-            "account_id": trader.account_id if trader else None,
-            "balance": f"{trader.currency} {trader.balance:.2f}" if trader else "USD 0.00",
-            "app_id": DERIV_APP_ID,
-            "symbols": list(SYMBOL_CONFIGS.keys()),
-            "models_loaded": trader.models_loaded if trader else False,
-            "trade_count": trader.trade_count if trader else 0,
-            "win_rate": f"{trader.win_count/trader.trade_count*100:.1f}%" if trader and trader.trade_count > 0 else "0%",
-            "total_profit": f"${trader.total_profit:.2f}" if trader else "$0.00",
-            "active_positions": len(trader.active_positions) if trader else 0,
-            "trading_enabled": ENABLE_TRADING,
-            "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/dashboard")
-async def dashboard():
-    """Simple Bootstrap dashboard"""
+    """Dashboard as the home page"""
     if trader is None:
         return HTMLResponse(content="<h1>❌ Trader not initialized</h1>", status_code=503)
     
     try:
-        # --- Helper function for symbol data ---
         def get_symbol_html(symbol_name, df):
             if df is None or df.empty:
                 return f'''
@@ -972,13 +921,11 @@ async def dashboard():
                 </div>
                 '''
 
-        # --- Build symbol data ---
         symbol_data = ""
         for symbol_name in SYMBOL_CONFIGS.keys():
             df = trader.last_data.get(symbol_name)
             symbol_data += get_symbol_html(symbol_name, df)
 
-        # --- Get data safely with ALL variables defined ---
         currency = trader.currency if trader and hasattr(trader, 'currency') else 'USD'
         account_id = trader.account_id if trader and trader.account_id else 'N/A'
         balance = f"{currency} {trader.balance:.2f}" if trader and trader.balance is not None else f"{currency} 0.00"
@@ -992,7 +939,6 @@ async def dashboard():
         trading_status = "ENABLED ✅" if ENABLE_TRADING else "DISABLED ❌"
         confidence_threshold = f"{CONFIDENCE_THRESHOLD:.0%}"
 
-        # --- Trade log ---
         trade_log_html = ""
         if trader and trader.recent_trades:
             for trade in trader.recent_trades[:10]:
@@ -1010,13 +956,11 @@ async def dashboard():
         else:
             trade_log_html = '<tr><td colspan="6" class="text-center text-muted">No trades yet</td></tr>'
 
-        # --- Uptime ---
         uptime = "N/A"
         if trader and trader.last_cycle_time:
             uptime_seconds = time.time() - trader.last_cycle_time
             uptime = f"{int(uptime_seconds // 60)}m {int(uptime_seconds % 60)}s"
 
-        # --- Position details ---
         position_details = ""
         if trader and trader.active_positions:
             for symbol, pos in trader.active_positions.items():
@@ -1024,7 +968,6 @@ async def dashboard():
         else:
             position_details = "No active positions"
 
-        # --- Loop status ---
         loop_status = "🟢 Running" if trader and trader.running else "🔴 Stopped"
         last_cycle = "N/A"
         if trader and trader.last_cycle_time:
@@ -1032,7 +975,6 @@ async def dashboard():
 
         bot_status = "🟢 ONLINE" if trader and trader.running else "🔴 OFFLINE"
 
-        # --- Bootstrap HTML Template ---
         html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1041,6 +983,7 @@ async def dashboard():
     <title>Deriv Trading Bot Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <meta http-equiv="refresh" content="60">
 </head>
 <body class="bg-dark text-light">
     <div class="container py-4">
@@ -1055,10 +998,6 @@ async def dashboard():
         </div>
         
         <p class="text-center text-muted" id="lastUpdate">⏰ Last Update: Loading...</p>
-        
-        <div class="text-center mb-4">
-            <button class="btn btn-outline-success" onclick="location.reload()">🔄 Refresh Data</button>
-        </div>
         
         <div class="row g-3 mb-4">
             <div class="col-md-4">
@@ -1155,7 +1094,6 @@ async def dashboard():
         }}
         setInterval(updateTime, 1000);
         updateTime();
-        setTimeout(function() {{ location.reload(); }}, 60000);
         document.getElementById('lastUpdate').textContent = '⏰ Last Update: ' + new Date().toLocaleString();
     </script>
 </body>
@@ -1167,11 +1105,10 @@ async def dashboard():
         print(f"❌ Dashboard error: {e}")
         import traceback
         traceback.print_exc()
-        return HTMLResponse(content=f"<h1>❌ Dashboard Error</h1><p>{str(e)}</p><pre>{traceback.format_exc()}</pre>", status_code=500)
+        return HTMLResponse(content=f"<h1>❌ Dashboard Error</h1><p>{str(e)}</p>", status_code=500)
 
 @app.get("/status")
 async def status():
-    """Detailed status endpoint"""
     if trader is None:
         raise HTTPException(status_code=503, detail="Trader not initialized")
     
@@ -1205,7 +1142,6 @@ async def status():
 
 @app.post("/toggle_trading")
 async def toggle_trading():
-    """Toggle trading on/off"""
     global ENABLE_TRADING
     ENABLE_TRADING = not ENABLE_TRADING
     status = "ENABLED" if ENABLE_TRADING else "DISABLED"
@@ -1214,7 +1150,6 @@ async def toggle_trading():
 
 @app.post("/stop")
 async def stop_bot():
-    """Stop the bot gracefully"""
     if trader:
         trader.running = False
         return {"message": "Bot stopping..."}
