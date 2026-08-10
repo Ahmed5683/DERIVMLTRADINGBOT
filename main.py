@@ -1,5 +1,5 @@
 # ============================================
-# main.py - FastAPI Version (Async Native)
+# main.py - FastAPI Version with Async Support
 # ============================================
 import asyncio
 import json
@@ -179,12 +179,11 @@ def validate_credentials():
         # Get balance
         print(Fore.YELLOW + "📡 Fetching balance via OTP...")
         
-        # ✅ FIX: Handle running event loop
-        try:
-            loop = asyncio.get_running_loop()
-            balance, currency = loop.run_until_complete(get_balance_via_otp(otp_ws_url))
-        except RuntimeError:
-            balance, currency = asyncio.run(get_balance_via_otp(otp_ws_url))
+        # ✅ FIX: Use a ThreadPoolExecutor to run the async function in a separate thread
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(asyncio.run, get_balance_via_otp(otp_ws_url))
+            balance, currency = future.result(timeout=30)
         
         if balance is not None:
             print(Fore.GREEN + "="*60)
@@ -224,7 +223,7 @@ class CrashBoomTrader:
         self.models_loaded = False
         self.recent_trades = []
         self.trade_log = []
-        self.last_cycle_time = None  # Track last cycle time
+        self.last_cycle_time = None
         
         # Validate credentials and get demo account
         is_valid, account_id, balance, currency = validate_credentials()
