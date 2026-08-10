@@ -729,103 +729,101 @@ class CrashBoomTrader:
         asyncio.create_task(place_and_record())
     
     async def run_trading_loop(self):
-    """Main trading loop - runs every minute with timeout protection"""
-    print(Fore.CYAN + "\n🟢 STARTING LIVE TRADING LOOP")
-    print(Fore.CYAN + "Fetching 1-minute candles for all symbols every 60 seconds...")
-    print(Fore.YELLOW + f"⚡ Trading on EVERY valid signal (no rate limiting)")
-    print(Fore.YELLOW + f"🚀 Trading: {'ENABLED' if ENABLE_TRADING else 'DISABLED'}")
-    
-    cycle_count = 0
-    
-    while self.running:
-        try:
-            cycle_count += 1
-            current_time = datetime.now().strftime('%H:%M:%S')
-            self.last_cycle_time = datetime.now().timestamp()
-            
-            print(Fore.CYAN + f"\n⏰ Cycle #{cycle_count} - {current_time}")
-            
-            # Fetch and analyze all symbols
-            for symbol_name, config in SYMBOL_CONFIGS.items():
-                try:
-                    df = await self.fetch_1min_candles(config['symbol'], count=200)
-                    
-                    if df is None or df.empty:
-                        if ENABLE_LOGGING:
-                            print(Fore.YELLOW + f"  ⚠️ No data for {symbol_name}")
-                        continue
-                    
-                    self.last_data[symbol_name] = df
-                    self.last_update[symbol_name] = datetime.now()
-                    
-                    # Show prediction confidence
-                    pred = self.predict_signal(symbol_name, df)
-                    if pred and ENABLE_LOGGING:
-                        conf_str = f"Conf: {pred['confidence']:.1%}" if pred['confidence'] else "N/A"
-                        dpo_str = f"DPO: {pred['dpo']:.4f}" if pred['dpo'] else "N/A"
-                        print(Fore.WHITE + f"  📊 {symbol_name}: close: {df['close'].iloc[-1]:.4f} | {conf_str} | {dpo_str}")
-                    elif ENABLE_LOGGING:
-                        print(Fore.WHITE + f"  📊 {symbol_name}: close: {df['close'].iloc[-1]:.4f}")
-                    
-                    # Manage existing position
-                    self.manage_position(symbol_name, df)
-                    
-                    # Check for new signal (only if not in position)
-                    if symbol_name not in self.active_positions:
-                        signal = self.check_for_signal(symbol_name, df)
-                        if signal:
-                            self.execute_trade(signal)
-                            await asyncio.sleep(0)  # Let the event loop breathe
-                except Exception as e:
-                    print(Fore.RED + f"❌ Error processing {symbol_name}: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    continue
-            
-            # Print status summary
-            win_rate = self.win_count/self.trade_count*100 if self.trade_count > 0 else 0
-            print(Fore.CYAN + f"\n📊 STATUS SUMMARY:")
-            print(Fore.CYAN + f"   Trades: {self.trade_count} (Wins: {Fore.GREEN}{self.win_count}{Fore.CYAN} | Losses: {Fore.RED}{self.loss_count}{Fore.CYAN})")
-            print(Fore.CYAN + f"   Win Rate: {win_rate:.1f}%")
-            print(Fore.CYAN + f"   Total P&L: {Fore.GREEN if self.total_profit >= 0 else Fore.RED}${self.total_profit:.2f}")
-            print(Fore.CYAN + f"   Balance: ${self.balance:.2f}")
-            print(Fore.CYAN + f"   Active Positions: {len(self.active_positions)}")
-            
-            # Refresh balance every 5 cycles
-            if cycle_count % 5 == 0:
-                try:
-                    otp_url = get_otp_url(self.account_id)
-                    if otp_url:
-                        new_balance, currency = await get_balance_via_otp(otp_url)
-                        if new_balance is not None:
-                            self.balance = new_balance
-                            print(Fore.GREEN + f"💰 Balance refreshed: ${self.balance:.2f}")
-                except Exception as e:
-                    print(Fore.YELLOW + f"⚠️ Balance refresh failed: {e}")
-            
-            # ✅ Sleep with timeout protection
-            print(Fore.YELLOW + f"⏳ Waiting 60 seconds for next cycle...")
+        """Main trading loop - runs every minute with timeout protection"""
+        print(Fore.CYAN + "\n🟢 STARTING LIVE TRADING LOOP")
+        print(Fore.CYAN + "Fetching 1-minute candles for all symbols every 60 seconds...")
+        print(Fore.YELLOW + f"⚡ Trading on EVERY valid signal (no rate limiting)")
+        print(Fore.YELLOW + f"🚀 Trading: {'ENABLED' if ENABLE_TRADING else 'DISABLED'}")
+        
+        cycle_count = 0
+        
+        while self.running:
             try:
-                # Use asyncio.sleep with a timeout wrapper
-                await asyncio.sleep(60)
-                print(Fore.GREEN + f"✅ Sleep complete, starting next cycle...")
-            except asyncio.CancelledError:
-                print(Fore.YELLOW + "⚠️ Sleep was cancelled, restarting cycle...")
-                continue
-            except Exception as e:
-                print(Fore.RED + f"❌ Sleep error: {e}")
-                # If sleep fails, wait a moment and continue
-                await asyncio.sleep(1)
+                cycle_count += 1
+                current_time = datetime.now().strftime('%H:%M:%S')
+                self.last_cycle_time = datetime.now().timestamp()
                 
-        except Exception as e:
-            print(Fore.RED + f"❌ Error in trading loop: {e}")
-            import traceback
-            traceback.print_exc()
-            await asyncio.sleep(5)  # Wait 5 seconds before retrying
-    
-    if self.websocket:
-        await self.websocket.close()
-    print(Fore.CYAN + "\n🛑 Trading loop stopped")
+                print(Fore.CYAN + f"\n⏰ Cycle #{cycle_count} - {current_time}")
+                
+                # Fetch and analyze all symbols
+                for symbol_name, config in SYMBOL_CONFIGS.items():
+                    try:
+                        df = await self.fetch_1min_candles(config['symbol'], count=200)
+                        
+                        if df is None or df.empty:
+                            if ENABLE_LOGGING:
+                                print(Fore.YELLOW + f"  ⚠️ No data for {symbol_name}")
+                            continue
+                        
+                        self.last_data[symbol_name] = df
+                        self.last_update[symbol_name] = datetime.now()
+                        
+                        # Show prediction confidence
+                        pred = self.predict_signal(symbol_name, df)
+                        if pred and ENABLE_LOGGING:
+                            conf_str = f"Conf: {pred['confidence']:.1%}" if pred['confidence'] else "N/A"
+                            dpo_str = f"DPO: {pred['dpo']:.4f}" if pred['dpo'] else "N/A"
+                            print(Fore.WHITE + f"  📊 {symbol_name}: close: {df['close'].iloc[-1]:.4f} | {conf_str} | {dpo_str}")
+                        elif ENABLE_LOGGING:
+                            print(Fore.WHITE + f"  📊 {symbol_name}: close: {df['close'].iloc[-1]:.4f}")
+                        
+                        # Manage existing position
+                        self.manage_position(symbol_name, df)
+                        
+                        # Check for new signal (only if not in position)
+                        if symbol_name not in self.active_positions:
+                            signal = self.check_for_signal(symbol_name, df)
+                            if signal:
+                                self.execute_trade(signal)
+                                await asyncio.sleep(0)  # Let the event loop breathe
+                    except Exception as e:
+                        print(Fore.RED + f"❌ Error processing {symbol_name}: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        continue
+                
+                # Print status summary
+                win_rate = self.win_count/self.trade_count*100 if self.trade_count > 0 else 0
+                print(Fore.CYAN + f"\n📊 STATUS SUMMARY:")
+                print(Fore.CYAN + f"   Trades: {self.trade_count} (Wins: {Fore.GREEN}{self.win_count}{Fore.CYAN} | Losses: {Fore.RED}{self.loss_count}{Fore.CYAN})")
+                print(Fore.CYAN + f"   Win Rate: {win_rate:.1f}%")
+                print(Fore.CYAN + f"   Total P&L: {Fore.GREEN if self.total_profit >= 0 else Fore.RED}${self.total_profit:.2f}")
+                print(Fore.CYAN + f"   Balance: ${self.balance:.2f}")
+                print(Fore.CYAN + f"   Active Positions: {len(self.active_positions)}")
+                
+                # Refresh balance every 5 cycles
+                if cycle_count % 5 == 0:
+                    try:
+                        otp_url = get_otp_url(self.account_id)
+                        if otp_url:
+                            new_balance, currency = await get_balance_via_otp(otp_url)
+                            if new_balance is not None:
+                                self.balance = new_balance
+                                print(Fore.GREEN + f"💰 Balance refreshed: ${self.balance:.2f}")
+                    except Exception as e:
+                        print(Fore.YELLOW + f"⚠️ Balance refresh failed: {e}")
+                
+                # Sleep with timeout protection
+                print(Fore.YELLOW + f"⏳ Waiting 60 seconds for next cycle...")
+                try:
+                    await asyncio.sleep(60)
+                    print(Fore.GREEN + f"✅ Sleep complete, starting next cycle...")
+                except asyncio.CancelledError:
+                    print(Fore.YELLOW + "⚠️ Sleep was cancelled, restarting cycle...")
+                    continue
+                except Exception as e:
+                    print(Fore.RED + f"❌ Sleep error: {e}")
+                    await asyncio.sleep(1)
+                    
+            except Exception as e:
+                print(Fore.RED + f"❌ Error in trading loop: {e}")
+                import traceback
+                traceback.print_exc()
+                await asyncio.sleep(5)
+        
+        if self.websocket:
+            await self.websocket.close()
+        print(Fore.CYAN + "\n🛑 Trading loop stopped")
 
 # --- GLOBAL INITIALIZATION ---
 print(Fore.CYAN + "="*70)
