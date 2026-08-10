@@ -782,6 +782,18 @@ class CrashBoomTrader:
                 print(Fore.CYAN + f"   Balance: ${self.balance:.2f}")
                 print(Fore.CYAN + f"   Active Positions: {len(self.active_positions)}")
                 
+                # Refresh balance every 5 cycles
+                if cycle_count % 5 == 0:
+                    try:
+                        otp_url = get_otp_url(self.account_id)
+                        if otp_url:
+                            new_balance, currency = await get_balance_via_otp(otp_url)
+                            if new_balance is not None:
+                                self.balance = new_balance
+                                print(Fore.GREEN + f"💰 Balance refreshed: ${self.balance:.2f}")
+                    except Exception as e:
+                        print(Fore.YELLOW + f"⚠️ Balance refresh failed: {e}")
+                
                 # Wait 60 seconds before next cycle
                 await asyncio.sleep(60)
                 
@@ -808,6 +820,27 @@ try:
 except Exception as e:
     print(Fore.RED + f"❌ Failed to initialize trader: {e}")
     trader = None
+
+# --- GLOBAL TRADING LOOP STARTER ---
+def start_trading_loop():
+    """Start the trading loop in a background thread"""
+    global trader
+    if trader:
+        print(Fore.GREEN + "🔄 Starting trading loop in background...")
+        try:
+            asyncio.run(trader.run_trading_loop())
+        except Exception as e:
+            print(Fore.RED + f"❌ Trading loop error: {e}")
+    else:
+        print(Fore.RED + "❌ Trader not initialized, cannot start trading loop")
+
+# --- START THE TRADING LOOP WHEN THE APP LOADS ---
+if trader:
+    trading_thread = threading.Thread(target=start_trading_loop, daemon=True)
+    trading_thread.start()
+    print(Fore.GREEN + "✅ Trading loop started in background thread")
+else:
+    print(Fore.RED + "❌ Trader not initialized, cannot start trading loop")
 
 # --- Flask Routes for Render ---
 @app.route('/')
@@ -881,28 +914,26 @@ def stop_bot():
         return jsonify({"message": "Bot stopping..."})
     return jsonify({"error": "Trader not found"}), 404
 
-# --- Background Thread for Trading ---
-def run_trading_bot():
-    """Run the trading bot in a background thread"""
-    global trader
-    if trader:
-        try:
-            asyncio.run(trader.run_trading_loop())
-        except Exception as e:
-            print(Fore.RED + f"❌ Error in trading loop: {e}")
-    else:
-        print(Fore.RED + "❌ Cannot run trading loop - trader not initialized")
-
 # --- Main Entry Point (for local testing) ---
 if __name__ == "__main__":
     # Get port from environment variable
     port = int(os.environ.get('PORT', 10000))
     print(Fore.GREEN + f"\n🚀 Starting Flask server on port {port}")
     
-    # Start trading thread if trader exists
+    # Start trading thread if trader exists and not already started
     if trader:
-        trading_thread = threading.Thread(target=run_trading_bot, daemon=True)
-        trading_thread.start()
-        print(Fore.GREEN + "✅ Trading thread started")
+        # Check if thread is already running
+        thread_already_running = False
+        for t in threading.enumerate():
+            if t.name == "TradingLoop":
+                thread_already_running = True
+                break
+        
+        if not thread_already_running:
+            trading_thread = threading.Thread(target=start_trading_loop, daemon=True, name="TradingLoop")
+            trading_thread.start()
+            print(Fore.GREEN + "✅ Trading thread started")
+        else:
+            print(Fore.GREEN + "✅ Trading thread already running")
     
     app.run(host='0.0.0.0', port=port, debug=False)
