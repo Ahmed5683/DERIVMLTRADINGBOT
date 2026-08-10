@@ -965,10 +965,10 @@ def dashboard():
             df = trader.last_data.get(symbol_name)
             symbol_data += get_symbol_html(symbol_name, df)
 
-        # --- Get data safely ---
+        # --- Get data safely with ALL variables defined ---
         currency = trader.currency if trader and hasattr(trader, 'currency') else 'USD'
         account_id = trader.account_id if trader and trader.account_id else 'N/A'
-        balance = f"{currency} {trader.balance:.2f}" if trader and trader.balance is not None else 'USD 0.00'
+        balance = f"{currency} {trader.balance:.2f}" if trader and trader.balance is not None else f"{currency} 0.00"
         trade_count = trader.trade_count if trader and trader.trade_count is not None else 0
         win_count = trader.win_count if trader and trader.win_count is not None else 0
         loss_count = trader.loss_count if trader and trader.loss_count is not None else 0
@@ -1154,7 +1154,7 @@ def dashboard():
         print(f"❌ Dashboard error: {e}")
         import traceback
         traceback.print_exc()
-        return f"<h1>❌ Dashboard Error</h1><p>{str(e)}</p>", 500
+        return f"<h1>❌ Dashboard Error</h1><p>{str(e)}</p><pre>{traceback.format_exc()}</pre>", 500
 
 @app.route('/status')
 def status():
