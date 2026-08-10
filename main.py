@@ -693,8 +693,9 @@ class CrashBoomTrader:
         print(color + f"   Win Rate: {win_rate:.1f}%")
         print(color + f"   Balance: ${self.balance:.2f}")
     
+    # ✅ FIXED: Synchronous execute_trade - NO asyncio.run()
     def execute_trade(self, signal):
-        """Execute a new trade"""
+        """Execute a new trade - Synchronous version - NO asyncio.run()"""
         print(Fore.CYAN + f"\n🟢 TRADE SIGNAL DETECTED - {signal['symbol']}")
         print(Fore.CYAN + f"   Signal: {signal['signal']}")
         print(Fore.CYAN + f"   Confidence: {signal['confidence']:.2%}")
@@ -706,8 +707,16 @@ class CrashBoomTrader:
         # Determine contract type
         contract_type = "MULTUP" if signal['signal'] == "BUY" else "MULTDOWN"
         
-        # Place the trade
-        result = asyncio.run(self.place_trade(signal['symbol'], contract_type))
+        # ✅ FIX: Use a new event loop for this trade ONLY
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            result = loop.run_until_complete(
+                self.place_trade(signal['symbol'], contract_type)
+            )
+        finally:
+            loop.close()
         
         if result and result.get('success'):
             self.active_positions[signal['symbol']] = {
@@ -794,8 +803,10 @@ class CrashBoomTrader:
                     except Exception as e:
                         print(Fore.YELLOW + f"⚠️ Balance refresh failed: {e}")
                 
-                # Wait 60 seconds before next cycle
+                # ✅ This is where the loop waits - ensure it completes
+                print(Fore.YELLOW + f"⏳ Waiting 60 seconds for next cycle...")
                 await asyncio.sleep(60)
+                print(Fore.GREEN + f"✅ Sleep complete, starting next cycle...")
                 
             except Exception as e:
                 print(Fore.RED + f"❌ Error in trading loop: {e}")
@@ -821,21 +832,20 @@ except Exception as e:
     print(Fore.RED + f"❌ Failed to initialize trader: {e}")
     trader = None
 
-# --- GLOBAL TRADING LOOP STARTER (FIXED - Persistent Event Loop) ---
+# --- GLOBAL TRADING LOOP STARTER ---
 def start_trading_loop():
-    """Start the trading loop in a background thread with a persistent event loop"""
+    """Start the trading loop in a background thread"""
     global trader
     if not trader:
         print(Fore.RED + "❌ Trader not initialized, cannot start trading loop")
         return
-
+    
     print(Fore.GREEN + "🔄 Starting trading loop in background...")
-
+    
     # Create a new event loop for this thread
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-
-    # Run the trading loop (this will block the thread)
+    
     try:
         loop.run_until_complete(trader.run_trading_loop())
     except Exception as e:
@@ -852,7 +862,7 @@ if trader:
         if t.name == "TradingLoop":
             thread_already_running = True
             break
-
+    
     if not thread_already_running:
         trading_thread = threading.Thread(target=start_trading_loop, daemon=True, name="TradingLoop")
         trading_thread.start()
