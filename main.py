@@ -1109,7 +1109,7 @@ def dashboard():
                     </tr>
                 </thead>
                 <tbody>
-                    {trade_log}
+                    {trade_log_html}
                 </tbody>
             </table>
         </div>
