@@ -729,14 +729,13 @@ class CrashBoomTrader:
         asyncio.create_task(place_and_record())
     
     async def run_trading_loop(self):
-        """Main trading loop - runs every minute with heartbeat logging"""
+        """Main trading loop - runs every minute (SIMPLIFIED)"""
         print(Fore.CYAN + "\n🟢 STARTING LIVE TRADING LOOP")
         print(Fore.CYAN + "Fetching 1-minute candles for all symbols every 60 seconds...")
         print(Fore.YELLOW + f"⚡ Trading on EVERY valid signal (no rate limiting)")
         print(Fore.YELLOW + f"🚀 Trading: {'ENABLED' if ENABLE_TRADING else 'DISABLED'}")
         
         cycle_count = 0
-        heartbeat_count = 0
         
         while self.running:
             try:
@@ -744,13 +743,9 @@ class CrashBoomTrader:
                 current_time = datetime.now().strftime('%H:%M:%S')
                 self.last_cycle_time = datetime.now().timestamp()
                 
-                if cycle_count > 1:
-                    heartbeat_count += 1
-                    if heartbeat_count % 2 == 0:
-                        print(Fore.CYAN + f"💓 Heartbeat - Bot is alive and scanning...")
-                
                 print(Fore.CYAN + f"\n⏰ Cycle #{cycle_count} - {current_time}")
                 
+                # Fetch and analyze all symbols
                 for symbol_name, config in SYMBOL_CONFIGS.items():
                     df = await self.fetch_1min_candles(config['symbol'], count=200)
                     
@@ -762,6 +757,7 @@ class CrashBoomTrader:
                     self.last_data[symbol_name] = df
                     self.last_update[symbol_name] = datetime.now()
                     
+                    # Show prediction confidence
                     pred = self.predict_signal(symbol_name, df)
                     if pred and ENABLE_LOGGING:
                         conf_str = f"Conf: {pred['confidence']:.1%}" if pred['confidence'] else "N/A"
@@ -770,14 +766,17 @@ class CrashBoomTrader:
                     elif ENABLE_LOGGING:
                         print(Fore.WHITE + f"  📊 {symbol_name}: close: {df['close'].iloc[-1]:.4f}")
                     
+                    # Manage existing position
                     self.manage_position(symbol_name, df)
                     
+                    # Check for new signal (only if not in position)
                     if symbol_name not in self.active_positions:
                         signal = self.check_for_signal(symbol_name, df)
                         if signal:
                             self.execute_trade(signal)
-                            await asyncio.sleep(0)
+                            await asyncio.sleep(0)  # Let the event loop breathe
                 
+                # Print status summary
                 win_rate = self.win_count/self.trade_count*100 if self.trade_count > 0 else 0
                 print(Fore.CYAN + f"\n📊 STATUS SUMMARY:")
                 print(Fore.CYAN + f"   Trades: {self.trade_count} (Wins: {Fore.GREEN}{self.win_count}{Fore.CYAN} | Losses: {Fore.RED}{self.loss_count}{Fore.CYAN})")
@@ -786,6 +785,7 @@ class CrashBoomTrader:
                 print(Fore.CYAN + f"   Balance: ${self.balance:.2f}")
                 print(Fore.CYAN + f"   Active Positions: {len(self.active_positions)}")
                 
+                # Refresh balance every 5 cycles
                 if cycle_count % 5 == 0:
                     try:
                         otp_url = get_otp_url(self.account_id)
@@ -797,13 +797,9 @@ class CrashBoomTrader:
                     except Exception as e:
                         print(Fore.YELLOW + f"⚠️ Balance refresh failed: {e}")
                 
+                # ✅ SIMPLIFIED: Just sleep for 60 seconds
                 print(Fore.YELLOW + f"⏳ Waiting 60 seconds for next cycle...")
-                for i in range(60):
-                    if not self.running:
-                        break
-                    if i % 15 == 0 and i > 0:
-                        print(Fore.CYAN + f"💓 Heartbeat - {60-i} seconds remaining...")
-                    await asyncio.sleep(1)
+                await asyncio.sleep(60)
                 print(Fore.GREEN + f"✅ Sleep complete, starting next cycle...")
                 
             except Exception as e:
