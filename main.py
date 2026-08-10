@@ -1022,7 +1022,7 @@ def dashboard():
 
         bot_status = "🟢 ONLINE" if trader and trader.running else "🔴 OFFLINE"
 
-        # --- HTML Template ---
+        # --- HTML Template with proper CSS ---
         html = '''
         <!DOCTYPE html>
         <html>
@@ -1031,7 +1031,11 @@ def dashboard():
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Deriv Trading Bot Dashboard</title>
             <style>
-                * { margin: 0; padding: 0; box-sizing: border-box; }
+                * {
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }
                 body {
                     font-family: 'Courier New', monospace;
                     background: #0a0e17;
@@ -1039,7 +1043,10 @@ def dashboard():
                     padding: 20px;
                     min-height: 100vh;
                 }
-                .container { max-width: 1200px; margin: 0 auto; }
+                .container {
+                    max-width: 1200px;
+                    margin: 0 auto;
+                }
                 h1 {
                     color: #00ff88;
                     text-align: center;
@@ -1079,9 +1086,15 @@ def dashboard():
                     font-size: 1.8em;
                     font-weight: bold;
                 }
-                .card-value.warning { color: #ffaa00; }
-                .card-value.danger { color: #ff4444; }
-                .card-value.success { color: #00ff88; }
+                .card-value.warning {
+                    color: #ffaa00;
+                }
+                .card-value.danger {
+                    color: #ff4444;
+                }
+                .card-value.success {
+                    color: #00ff88;
+                }
                 .card-sub {
                     color: #667788;
                     font-size: 0.8em;
@@ -1100,15 +1113,43 @@ def dashboard():
                     padding: 12px;
                     text-align: center;
                 }
-                .symbol-card .symbol { color: #00ff88; font-weight: bold; font-size: 1.1em; }
-                .symbol-card .price { color: #ffffff; font-size: 1.0em; margin: 4px 0; }
-                .symbol-card .update-time { color: #667788; font-size: 0.7em; margin: 2px 0; }
-                .symbol-card .conf { color: #ffaa00; font-size: 0.9em; margin: 4px 0; }
-                .symbol-card .dpo { color: #8899aa; font-size: 0.8em; }
-                .symbol-card .signal { font-weight: bold; font-size: 1.2em; }
-                .signal-buy { color: #00ff88; }
-                .signal-sell { color: #ff4444; }
-                .signal-none { color: #667788; }
+                .symbol-card .symbol {
+                    color: #00ff88;
+                    font-weight: bold;
+                    font-size: 1.1em;
+                }
+                .symbol-card .price {
+                    color: #ffffff;
+                    font-size: 1.0em;
+                    margin: 4px 0;
+                }
+                .symbol-card .update-time {
+                    color: #667788;
+                    font-size: 0.7em;
+                    margin: 2px 0;
+                }
+                .symbol-card .conf {
+                    color: #ffaa00;
+                    font-size: 0.9em;
+                    margin: 4px 0;
+                }
+                .symbol-card .dpo {
+                    color: #8899aa;
+                    font-size: 0.8em;
+                }
+                .symbol-card .signal {
+                    font-weight: bold;
+                    font-size: 1.2em;
+                }
+                .signal-buy {
+                    color: #00ff88;
+                }
+                .signal-sell {
+                    color: #ff4444;
+                }
+                .signal-none {
+                    color: #667788;
+                }
                 .status-badge {
                     display: inline-block;
                     padding: 4px 12px;
@@ -1161,8 +1202,12 @@ def dashboard():
                     padding: 4px 0;
                     border-bottom: 1px solid #0d1520;
                 }
-                .trade-log .win { color: #00ff88; }
-                .trade-log .loss { color: #ff4444; }
+                .trade-log .win {
+                    color: #00ff88;
+                }
+                .trade-log .loss {
+                    color: #ff4444;
+                }
                 .live-indicator {
                     display: inline-block;
                     width: 10px;
